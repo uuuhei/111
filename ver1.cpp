@@ -23,18 +23,16 @@ namespace po = boost::program_options;
 
 // Convenience functions
 double randomdouble(double a, double b);
-double generateStartingPhenotype(double *initialPhenotype);
 
 // Evolving a population and the traits of its constituent individuals
-std::vector<std::vector<double> > getMutList(int mutCount, const std::vector<double> traitVariances); //记得修改trait variances
+std::vector<double> getMutList(int mutCount, double traitStDev); //记得修改trait standard deviation
 void pickParents(vector<Individual> &population, double totalFitness, vector<Individual> &parents, double target, vector<double> &fitnessArr);
-Individual mateParents(vector<Individual> parents, std::vector<std::vector<double> > mutList);
+Individual mateParents(vector<Individual> parents, std::vector<double> mutList);
 bool checkBaby(Individual baby);
-void evolvePop(vector<Individual> &population, double target, int popSize, const std::vector<std::vector<double> > mutList);
+void evolvePop(vector<Individual> &population, double target, int popSize, const std::vector<double> mutList);
 
 // Extracting data
 double getTotalFitness(vector<Individual> &population, double target, vector<double> &fitnessArr);
-std::vector<double> getAverageTraitValues(vector<Individual> &population);
 double getAverageLB(vector<Individual> &population);
 double getVmor(vector<Individual> &population);
 string getData(vector<Individual> &population);
@@ -42,31 +40,23 @@ string getData(vector<Individual> &population);
 
 int main(int argc, char** argv)
 {
-    /* The assignments to the elements of Eigen::Matrix cannot be executed at file scope,
-     * so we put them inside main() instead:
-     */
     
-    // Declare the vector of trait variances
-    std::vector< double> traitVars(0.587405);
-
-    // Declare the (empirically obtained) variance-covariance matrix
-    std::vector< double> cov(0.587405); 
-    
+    // Standard deviation of log body size
+    double traitStDev = 0.587405;
     
     po::options_description desc("simulate jaw evolution");
     desc.add_options()
         ("help", "Show help message")
         ("mutCount", po::value<int>()->default_value(1000), "Number of mutations we will have")
         ("popSize", po::value<int>()->default_value(100), "Size of the populations")
-	    ("endpointsensitivity", po::value<double>()->default_value(0.01), "How close average fitness gets to 1")
-	    ("reps", po::value<int>()->default_value(1), "Number of simulation repetitions")
-	    ("gen_limit", po::value<int>()->default_value(30000), "Maximum number of generations before cutting short simulation run")
-        ("min_bd", po::value<double>()->default_value(10), "minimum body size")
-	    ("max_lb", po::value<double>()->default_value(3), "log of maximum body size") 
-        ("max_bd", po::value<double>()->default_value(1000), "maximum body size")
-	    ("burnLength", po::value<double>()->default_value(0), "Length of burnin and burnout")
-	 //("output_prefix", po::value<int>()->default_value(""), "Prefix for output files")
-	    ("output_suffix", po::value<string>()->default_value(""), "Prefix for output files");
+        ("endpointsensitivity", po::value<double>()->default_value(0.01), "How close average fitness gets to 1")
+        ("reps", po::value<int>()->default_value(1), "Number of simulation repetitions")
+        ("gen_limit", po::value<int>()->default_value(30000), "Maximum number of generations before cutting short simulation run")
+        ("min_lb", po::value<double>()->default_value(1), "log of minimum body size")
+        ("max_lb", po::value<double>()->default_value(3), "log of maximum body size")
+        ("burnLength", po::value<double>()->default_value(0), "Length of burnin and burnout")
+	 // ("output_prefix", po::value<int>()->default_value(""), "Prefix for output files")
+        ("output_suffix", po::value<string>()->default_value(""), "Prefix for output files");
 
 
 
@@ -78,17 +68,15 @@ int main(int argc, char** argv)
     const double endpointsensitivity = vm["endpointsensitivity"].as<double>(); // used 0.001 in Zack's sims -- using 0.05 you get average population fitness of <0.05
     const int reps = vm["reps"].as<int>();
     const int gen_limit = vm["gen_limit"].as<int>();
-    const double min_lb= vm["min_lb"].as<double>();
+    const double min_lb = vm["min_lb"].as<double>();
     const double max_lb = vm["max_lb"].as<double>();
-    const double min_bd= vm["min_bd"].as<double>();
-    const double max_bd = vm["max_bd"].as<double>();
     const double burnLength = vm["burnLength"].as<double>(); // originally set to popSize/2
     // const string output_prefix = vm["output_prefix"].as<string>();
     const string output_suffix = vm["output_suffix"].as<string>();
     
-
-    const double lowerBound = min_lb; //min_lb=(log 10)
-    const double upperBound = max_lb; //max_lb= (log 1000)
+    // targets
+    const double lowerBound = 2.176091; // log_10(150)
+    const double upperBound = 2.176091;
 
     // outputing the start parameter data
     ofstream pFile("parameters_" + output_suffix + ".txt");
@@ -98,7 +86,7 @@ int main(int argc, char** argv)
 
     // output stream
     ofstream outputFile("endpoints_" + output_suffix + ".txt");
-    outputFile << "type\tvmor\tavg_si\tavg_fit\tgens_passed" << endl;
+    outputFile << "type\tvar_bd\tavg_bd\tavg_fit\tgens_passed" << endl;
 
     // looping whole sim
     for(int i = 0; i < reps; i++) {
@@ -121,29 +109,21 @@ int main(int argc, char** argv)
 
         ofstream highFile(hName.c_str());
         ofstream lowFile(lName.c_str());
-        highFile << "gen\tavg_ep\tavgin\tavg_out\tavg_gap\tavg_buc\tavg_SI\tvar_ep\tvar_in\tvar_out\tvar_gap\tvar_buc\tvar_si\n";
-        lowFile << "gen\tavg_ep\tavgin\tavg_out\tavg_gap\tavg_buc\tavg_SI\tvar_ep\tvar_in\tvar_out\tvar_gap\tvar_buc\tvar_si\n";
+        highFile << "gen\tavg_bd\tvar_bd\n";
+        lowFile << "gen\tavg_bd\tvar_bd\n";
 
         // end of generation output file data
 
 
         // get a mutation list
-        std::vector<std::vector<double> > mutList;
-        // mutList = getMutList(mutCount, traitVars);
-        // multivariate alternative 这里不是多元正态分布了 需要修改
-        mutList = getMutList(mutCount, cov); 
+        std::vector<double> mutList;
+        mutList = getMutList(mutCount, traitStDev);
 
-        /* get phenotypes for starting population
-         * The numbers below are those of the squirrels whose log(bodysize) is closest to the mean.
-         * In the future, we would want these values to be user-specified rather than
-         * hard-wired into the code.
-         * Only body size is considered
-         */
-        double startingPhenotype[] = {100};
-        double start_lb = generateStartingPhenotype(startingPhenotype);
+        // get phenotypes for starting population
+        double start_lb = 2;
         
         // create populations of popSize
-        Individual squirrel (startingPhenotype);
+        Individual squirrel(start_lb);
         std::vector<Individual> highPop(popSize, squirrel);
         std::vector<Individual> lowPop(popSize, squirrel);
 
@@ -192,7 +172,7 @@ int main(int argc, char** argv)
         int outputFrequency = 50; // how often (in terms of generations) to print out data
         time_t start = time(0);
         
-        // while the average suction index is not at the target
+        // while the average body size is not at the target
         while(!done && count < gen_limit) {
             
             // outputing all the generation level data:
@@ -208,21 +188,21 @@ int main(int argc, char** argv)
             }
 
             // checking if low pop has finished evolving
-            if(fabs(getAverageLB(lowPop) - lowerBound) > endpointsensitivity) {
-                evolvePop(lowPop, lowerBound , popSize, mutList);
-                if(count % 50 == 0) {
+            if(fabs(pow(10, getAverageLB(lowPop)) - pow(10, lowerBound)) > endpointsensitivity) {
+                evolvePop(lowPop, lowerBound, popSize, mutList);
+                if(count % outputFrequency == 0) {
                     cout << "generation: " << count;
                     cout << "   body size low pop: " << pow(10, (getAverageLB(lowPop))); //编一个新的function，得到正常bodysize的数据 - 搞定
                     std::vector<double> fitnessArr(popSize, 0.0);
                     cout << "   Avg fitness low pop: " << getTotalFitness(lowPop, lowerBound, fitnessArr) / popSize << endl;
                     
                     // warnings
-                    std::vector<double> lowTraitVals = getAverageTraitValues(lowPop);
-                    if(lowTraitVals[0] < (log(10.1))) {
-                        cout << "   Low pop. approaching lower bound on epaxial   ";
-                    } else if(lowTraitVals[0] > (log(148.5))) {
-                        cout << "   Low pop. approaching upper bound on epaxial   ";
-
+                    double lowTraitVal = getAverageLB(lowPop);
+                    if(lowTraitVal < (log(10.1))) {
+                        cout << "   Low pop. approaching lower bound on body size   ";
+                    } else if(lowTraitVal > (log(990.0))) {
+                        cout << "   Low pop. approaching upper bound on body size   ";
+                    }
                 }
             } else if(!lowFinished) {
                 lowFinished = true;
@@ -233,21 +213,20 @@ int main(int argc, char** argv)
             }
 
             // checking if high pop has finished evolving
-            if(fabs(upperBound - getAverageLB(highPop)) > endpointsensitivity) {
+            if(fabs(pow(10, upperBound) - pow(10, getAverageLB(highPop))) > endpointsensitivity) {
                 evolvePop(highPop, upperBound, popSize, mutList);
-                double currentLB = getAverageLB(highPop);
-                if(count % 50 == 0) {
+                if(count % outputFrequency == 0) {
                     cout << "generation: " << count;
-                    cout << "   Body Size high pop: " << currentLB ;
+                    cout << "   Body Size high pop: " << pow(10, (getAverageLB(highPop)));
                     std::vector<double> fitnessArr(popSize, 0.0);
                     cout << "   Avg fitness high pop: " << getTotalFitness(highPop, upperBound, fitnessArr) / popSize << endl;
                     
                     // warnings
-                    std::vector<double> highTraitVals = getAverageTraitValues(lowPop);
-                    if(highTraitVals[0] < log(10.1)) {
-                        cout << "   High pop. approaching lower bound on epaxial   ";
-                    } else if(highTraitVals[0] > log(148.5)) {
-                        cout << "   High pop. approaching upper bound on epaxial   ";
+                    double highTraitVal = getAverageLB(highPop);
+                    if(highTraitVal < log(10.1)) {
+                        cout << "   High pop. approaching lower bound on body size   ";
+                    } else if(highTraitVal > log(990.0)) {
+                        cout << "   High pop. approaching upper bound on body size   ";
                     }
                 }
             } else if(!highFinished) {
@@ -265,8 +244,8 @@ int main(int argc, char** argv)
         cout << "ending simulation" << endl;
         cout << " " << endl;
         cout << "final stats: " << endl;
-        cout << "high pop log(body size): " << pow(10, (getAverageLB(highPop))) << " " << "   high pop generations: " << highCount << endl;
-        cout << "low pop log(body size): " << pow(10, (getAverageLB(lowPop))) << " " << "   low pop generations: " << lowCount << endl;
+        cout << "high pop body size: " << pow(10, (getAverageLB(highPop))) << " " << "   high pop generations: " << highCount << endl;
+        cout << "low pop body size: " << pow(10, (getAverageLB(lowPop))) << " " << "   low pop generations: " << lowCount << endl;
         
         // print total time
         double diff = difftime(time(0), start);
@@ -275,7 +254,7 @@ int main(int argc, char** argv)
         // print endpoint data
         std::vector<double> fitnessArr(popSize, 0.0);
         outputFile << "low\t" << getVmor(lowPop) << "\t" << pow(10, (getAverageLB(lowPop)))<< "\t" << getTotalFitness(lowPop, lowerBound, fitnessArr) / popSize << "\t" << lowCount << endl;
-        outputFile << "high\t" << getVmor(highPop) << "\t" << pow(10, (getAverageLB(highPop))) << "\t" << getTotalFitness(lowPop, lowerBound, fitnessArr) / popSize << "\t" << highCount << endl;
+        outputFile << "high\t" << getVmor(highPop) << "\t" << pow(10, (getAverageLB(highPop))) << "\t" << getTotalFitness(highPop, upperBound, fitnessArr) / popSize << "\t" << highCount << endl;
 
         // closing output generation files
         highFile.close();
@@ -283,7 +262,6 @@ int main(int argc, char** argv)
         
     }
     return 0;
-}
 }
 
 
@@ -298,39 +276,24 @@ double randomdouble(double a, double b)
 }
 
 
-// Make a starting phenotype
-
-double generateStartingPhenotype(double *initialPhenotype) {
-    Individual squirrel(initialPhenotype);
-    squirrel = Individual(initialPhenotype);
-    double start_lb = squirrel.getLB();
-    
-    return start_lb;
-}
-
-
-
 /* Get a mutation list. Note that all the mutations are drawn in advance from zero-mean normal
  * distributions; when applying a mutation to a newly generated baby, we just assign it a value
  * from this pre-assembled list instead of actually mutating its parents' values. This function
- * takes a vector of trait variances as its second argument, meaning that traits are treated as
- * i.i.d., drawn from univariate normal distributions with mean 0 and user-specified variances.
+ * takes a standard deviation as its second argument and assumes a mean of 0.
  */
 
-std::vector<std::vector<double> > getMutList(int mutCount, const std::vector<double> traitVariances) {
+std::vector<double> getMutList(int mutCount, const double traitStDev) {
     
     // source of randomness for initializing random seed (http://stackoverflow.com/a/38245134)
     std::random_device randomnessSource;
     // define univariate normal distributions
-    std::normal_distribution<double> lbMutMaker(0.0, traitVariances[0]);
-    // blank vector for initialization - 1个trait 修改为1个
-    std::vector<double> zeros(1, 0.0);
+    std::normal_distribution<double> lbMutMaker(0.0, traitStDev);
     // store draws from the normal distributions specified above using a for loop
-    std::vector<std::vector<double> > mutList(mutCount, zeros);
+    std::vector<double> mutList(mutCount, 0.0);
     for (int i = 0; i < mutCount; ++i) {
         // Seed obtained using the Mersenne twister pseudorandom number generator above
         std::mt19937 gen(randomnessSource());
-        mutList[i][0] = lbMutMaker(gen);
+        mutList[i] = lbMutMaker(gen);
     }
     
     return mutList;
@@ -367,8 +330,8 @@ void pickParents(vector<Individual> &population, double totalFitness, vector<Ind
 
 // Make a baby from two parents
 
-Individual mateParents(vector<Individual> parents, std::vector<std::vector<double> > mutList) {
-    Individual baby(parents[0]);
+Individual mateParents(vector<Individual> parents, std::vector<double> mutList) {
+    Individual baby(parents[0].phenotypeVal);
     int mutRate = 100000;
     int val;
     for(int i = 0; i < baby.lbMutations.size(); i++) {
@@ -403,7 +366,7 @@ bool checkBaby(Individual baby) {
 
 // Step the population forward by 1 generation
 
-void evolvePop(vector<Individual> &population, double target, int popSize, const std::vector<std::vector<double> > mutList) {
+void evolvePop(vector<Individual> &population, double target, int popSize, const std::vector<double> mutList) {
 
     std::vector<double> fitnessArr(popSize, 0.0);
     // get total fitness
@@ -452,20 +415,6 @@ double getTotalFitness(vector<Individual> &population, double target, vector<dou
 }
 
 
-// Return average trait values
-
-std::vector<double> getAverageTraitValues(vector<Individual> &population) {
-    std::vector<double> traitVals(1, 0.0);
-    for(int i = 0; i < population.size(); i++) {
-        traitVals[0] += population[i].getLB();
-    }
-    for(int j = 0; j < traitVals.size(); j++) {
-        traitVals[j] = traitVals[j] / population.size();
-    }
-    return traitVals;
-}
-
-
 // Return the average log(body size)
 
 double getAverageLB(vector<Individual> &population) {
@@ -483,27 +432,25 @@ double getVmor(vector<Individual> &population) {
 
     int popSize = population.size();
     // creating a vector of vectors to hold all the phenotype vals
-    std::vector<double> rowinit(popSize, 0.0);
-    std::vector<std::vector<double> > popVects(1, rowinit);
+    std::vector<double> popVects(popSize, 0.0);
   
     // puting the phenotype vals in the vectors
     for(int i = 0; i < popSize; i++) {
-        popVects[0][i] = population[i].getLB();
+        popVects[i] = population[i].getLB();
 
     }
 
-    // getting trait means
-    double lbMean = (std::accumulate(popVects[0].begin(), popVects[0].end(), 0.0)) / popSize;
+    // getting body size mean
+    double lbMean = (std::accumulate(popVects.begin(), popVects.end(), 0.0)) / popSize;
 
 
-    // getting trait variances
-    std::vector<double> vars(1, 0.0);
+    // getting body size variance
+    double lbVar = 0.0;
     for(int j = 0; j < popSize; j++) {
-        vars[0] += ((popVects[0][j] - lbMean) * (popVects[0][j] - lbMean)) / popSize;
+        lbVar += ((popVects[j] - lbMean) * (popVects[j] - lbMean)) / popSize;
     }
-    double Vmor = std::accumulate(vars.begin(), vars.end(), 0.0);
 
-    return Vmor;
+    return lbVar;
 }
 
 
@@ -514,29 +461,25 @@ string getData(vector<Individual> &population) {
     std::stringstream s;
     int popSize = population.size();
     // creating a vector of vectors to hold all the phenotype vals
-    std::vector<double> rowinit(popSize, 0.0);
-    std::vector<std::vector<double> > popVects(1, rowinit);
+    std::vector<double> popVects(popSize, 0.0);
   
     // puting the phenotype vals in the vectors
     for(int i = 0; i < popSize; i++) {
-        popVects[0][i] = population[i].getLB();
+        popVects[i] = population[i].getLB();
     }
 
-    // getting trait means 
-    double lbMean = (std::accumulate(popVects[0].begin(), popVects[0].end(), 0.0)) / popSize;
+    // getting body size mean
+    double lbMean = (std::accumulate(popVects.begin(), popVects.end(), 0.0)) / popSize;
 
-    s << lbMean;
+    s << lbMean << "\t";
 
-    // getting trait variances 也没什么用，只有一个trait
-    std::vector<double> vars(1, 0.0);
+    // getting body size variance 也没什么用，只有一个trait
+    double lbVar = 0.0;
     for(int j = 0; j < popSize; j++) {
-        vars[0] += ((popVects[0][j] - lbMean) * (popVects[0][j] - lbMean)) / popSize;
+        lbVar += ((popVects[j] - lbMean) * (popVects[j] - lbMean)) / popSize;
     }
 
-    s << vars[0];
-
-    double Vmor = std::accumulate(vars.begin(), vars.end(), 0.0);
-    s << Vmor << "\n";
+    s << lbVar << "\n";
 
     string data = s.str();
     return data;

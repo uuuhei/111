@@ -11,10 +11,8 @@ class Individual{
 
 public:
       double phenotypeVal; //注意重新define过了 不再是arr了
-    std::vector<std::vector<double> >lbMutations;
-
-      std::vector<double> muts;
-    double mutStrength = 100;
+      std::vector<double> lbMutations;
+      double mutStrength = 100;
 
 //得到body size的第一个trait value，定义了function
 
@@ -23,7 +21,7 @@ public:
 
             double lbsize = phenotypeVal;
             for(int i =0; i < lbMutations.size(); i++){
-                    lbsize+=lbMutations[i][0]*mutStrength;
+                    lbsize+=lbMutations[i]*mutStrength;
                 }
 
             return lbsize;
@@ -32,22 +30,20 @@ public:
 //通过预计的trait的数值，得到这个个体的fitness
         double getFitness(double target)
         {
-            double distance = pow((getLB()- target), 2) / 0.000353539 * -.5;
+            double distance = pow((getLB() - target), 2) * -.5;
             return exp(distance);
         }
 
 
-        Individual(double sPhenotypes[])
+        Individual(double sPhenotypes)
         {
             //setting the phenotypes of this individual equal to the passed in phenotype vals
-            phenotypeVal = sPhenotypes[0]; //这里去掉了s！
-            muts = std::vector<double>(1000, 0.0); //
-            std::vector<double> zeros(1, 0.0);
-            lbMutations = std::vector<std::vector<double> > (1000, zeros);
+            phenotypeVal = sPhenotypes; //这里去掉了s！
+            lbMutations = std::vector<double> (1000, 0.0);
 
         };
 
-        };
+};
 
      
  #endif // INDIVIDUAL_H
