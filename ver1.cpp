@@ -28,8 +28,8 @@ double randomdouble(double a, double b);
 std::vector<double> getMutList(int mutCount, double traitStDev); //记得修改trait standard deviation
 void pickParents(vector<Individual> &population, double totalFitness, vector<Individual> &parents, double target, vector<double> &fitnessArr);
 Individual mateParents(vector<Individual> parents, std::vector<double> mutList);
-bool checkBaby(Individual baby);
-void evolvePop(vector<Individual> &population, double target, int popSize, const std::vector<double> mutList);
+bool checkBaby(Individual baby, double lowerLim, double upperLim);
+void evolvePop(vector<Individual> &population, double target, double lowerLim, double upperLim, int popSize, const std::vector<double> mutList);
 
 // Extracting data
 double getTotalFitness(vector<Individual> &population, double target, vector<double> &fitnessArr);
@@ -109,19 +109,32 @@ int main(int argc, char** argv)
         std::vector<double> mutList;
         mutList = getMutList(mutCount, traitStDev);
 
-        // get phenotypes for starting population
-        double start_lb = 2; // log_10(100)
+        /* Get phenotypes for starting populations. If a nonzero burnin period is specified, we
+         * will start with a population of individuals sharing the same randomly generated value,
+         * and let it evolve (using the same evolvePop() function used for the simulation proper)
+         * toward a specified starting body size. The idea is to generate a population where all
+         * individuals are phenotypically identical and equally distant from the fitness optimum,
+         * but which already contains some genotypic variation for selection to act upon. If burnin
+         * is skipped, the simulation starts with a bunch of individuals that are identical both
+         * phenotypically and genotypically.
+         */
+         
+        double start_lb;
+        
+        if (burnLength != 0) {
+            start_lb = randomdouble(min_lb, max_lb);
+        } else {
+            start_lb = 2; // log_10(100)
+        }
         
         // create population of specified size
         Individual squirrel(start_lb);
         std::vector<Individual> Pop(popSize, squirrel);
 
         // burn-in the populations
-
-        
         if (burnLength != 0) {
             for(int i = 0; i < burnLength; i++) {
-                evolvePop(Pop, start_lb, popSize, mutList);
+                evolvePop(Pop, start_lb, min_lb, max_lb, popSize, mutList);
 
                 if(i == 0) {
                     cout << "first burnin generation: " << endl;
@@ -142,7 +155,6 @@ int main(int argc, char** argv)
         }
 
         // evolve the populations
-
         int count = 0;
         bool finished = false;
         int burnoutLength = burnLength;
@@ -160,7 +172,7 @@ int main(int argc, char** argv)
 
             // checking if the population has finished evolving
             if(fabs(pow(10, getAverageLB(Pop)) - pow(10, targetLbs)) > endpointsensitivity) {
-                evolvePop(Pop, targetLbs, popSize, mutList);
+                evolvePop(Pop, targetLbs, min_lb, max_lb, popSize, mutList);
                 if(count % outputFrequency == 0) {
                     cout << "generation: " << count;
                     cout << "   Avg body size: " << pow(10, (getAverageLB(Pop))); //编一个新的function，得到正常bodysize的数据 - 搞定
@@ -290,12 +302,11 @@ Individual mateParents(vector<Individual> parents, std::vector<double> mutList) 
 
 // Make sure that a baby satisfies the empirical constraints on trait values
 
-bool checkBaby(Individual baby) {
+bool checkBaby(Individual baby, double lowerLim, double upperLim) {
 
     double lb = baby.getLB();
 
-    
-    if((lb < 1 || lb > 3)){
+    if ((lb < lowerLim || lb > upperLim)) {
         int stopper = 0;
         return false;
     }
@@ -305,7 +316,7 @@ bool checkBaby(Individual baby) {
 
 // Step the population forward by 1 generation
 
-void evolvePop(vector<Individual> &population, double target, int popSize, const std::vector<double> mutList) {
+void evolvePop(vector<Individual> &population, double target, double lowerLim, double upperLim, int popSize, const std::vector<double> mutList) {
 
     std::vector<double> fitnessArr(popSize, 0.0);
     // get total fitness
@@ -323,7 +334,7 @@ void evolvePop(vector<Individual> &population, double target, int popSize, const
         // make a baby
         Individual baby = mateParents(parents, mutList);
 
-        if(!checkBaby(baby)) {
+        if (!checkBaby(baby, lowerLim, upperLim)) {
             stallCount++;
             if(stallCount > 500) {
                 cout << "problem" << endl;
@@ -423,4 +434,3 @@ string getData(vector<Individual> &population) {
     string data = s.str();
     return data;
 }
-
