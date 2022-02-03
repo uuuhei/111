@@ -136,9 +136,10 @@ int main(int argc, char** argv)
         int outputFrequency = 50; // how often (in terms of generations) to print out data
 
         /* Burn-in the populations. The burnin phase will end (1) when the average log body size
-         * gets acceptably close to the specified starting value OR when the target number of
+         * gets acceptably close to the specified starting value OR (2) when the target number of
          * generations is reached -- whichever comes first.
          */
+
         if (burnLength != 0) {
             int burnCount = 0;
             while(fabs(pow(10, getAverageLB(Pop)) - pow(10, start_lb)) > endpointsensitivity || burnCount < burnLength) {
