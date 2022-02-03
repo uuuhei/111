@@ -42,7 +42,7 @@ int main(int argc, char** argv)
 {
     
     // Standard deviation of log body size
-    double traitStDev = 0.587405;
+    double traitStDev = 0.05;
     
     po::options_description desc("simulate jaw evolution");
     desc.add_options()
@@ -52,8 +52,9 @@ int main(int argc, char** argv)
         ("endpointsensitivity", po::value<double>()->default_value(0.01), "How close average fitness gets to 1")
         ("reps", po::value<int>()->default_value(1), "Number of simulation repetitions")
         ("gen_limit", po::value<int>()->default_value(30000), "Maximum number of generations before cutting short simulation run")
-        ("min_lb", po::value<double>()->default_value(1), "log of minimum body size")
-        ("max_lb", po::value<double>()->default_value(3), "log of maximum body size")
+        ("min_lb", po::value<double>()->default_value(1), "log of minimum body size")    // log_10(10)
+        ("max_lb", po::value<double>()->default_value(3), "log of maximum body size")    // log_10(1000)
+        ("start_lb", po::value<double>()->default_value(2), "log of starting body size") // log_10(100)
         ("burnLength", po::value<double>()->default_value(0), "Length of burnin and burnout")
 	 // ("output_prefix", po::value<int>()->default_value(""), "Prefix for output files")
         ("output_suffix", po::value<string>()->default_value(""), "Prefix for output files");
@@ -70,7 +71,8 @@ int main(int argc, char** argv)
     const int gen_limit = vm["gen_limit"].as<int>();
     const double min_lb = vm["min_lb"].as<double>();
     const double max_lb = vm["max_lb"].as<double>();
-    const double burnLength = vm["burnLength"].as<double>(); // originally set to popSize/2
+    const double start_lb = vm["start_lb"].as<double>();
+    const double burnLength = vm["burnLength"].as<double>(); // this is just the *minimum* burnin length
     // const string output_prefix = vm["output_prefix"].as<string>();
     const string output_suffix = vm["output_suffix"].as<string>();
     
@@ -119,46 +121,45 @@ int main(int argc, char** argv)
          * phenotypically and genotypically.
          */
          
-        double start_lb;
+        double init;
         
         if (burnLength != 0) {
-            start_lb = randomdouble(min_lb, max_lb);
+            init = randomdouble(min_lb, max_lb);
         } else {
-            start_lb = 2; // log_10(100)
+            init = start_lb;
         }
         
         // create population of specified size
-        Individual squirrel(start_lb);
+        Individual squirrel(init);
         std::vector<Individual> Pop(popSize, squirrel);
+        
+        int outputFrequency = 50; // how often (in terms of generations) to print out data
 
-        // burn-in the populations
+        /* Burn-in the populations. The burnin phase will end (1) when the average log body size
+         * gets acceptably close to the specified starting value OR when the target number of
+         * generations is reached -- whichever comes first.
+         */
         if (burnLength != 0) {
-            for(int i = 0; i < burnLength; i++) {
+            int burnCount = 0;
+            while(fabs(pow(10, getAverageLB(Pop)) - pow(10, start_lb)) > endpointsensitivity || burnCount < burnLength) {
+                
                 evolvePop(Pop, start_lb, min_lb, max_lb, popSize, mutList);
-
-                if(i == 0) {
-                    cout << "first burnin generation: " << endl;
-                    cout << "   Avg body size: " << pow(10, (getAverageLB(Pop)));
+            
+                if(burnCount % outputFrequency == 0) {
+                    cout << "burnin generation: " << burnCount << endl;
+                    cout << "Avg body size: " << pow(10, (getAverageLB(Pop)));
                     std::vector<double> fitnessArr(popSize, 0.0);
                     cout << "   Avg fitness: " << getTotalFitness(Pop, targetLbs, fitnessArr) / popSize << endl;
                     cout << " " << endl;
                 }
-
-                if(i == burnLength - 1) {
-                    cout << "final burnin generation " << "(" << i + 1 << ")" << ": " << endl;
-                    cout << "   Avg body size: " << pow(10, (getAverageLB(Pop)));
-                    std::vector<double> fitnessArr(popSize, 0.0);
-                    cout << "   Avg fitness: " << getTotalFitness(Pop, targetLbs, fitnessArr) / popSize << endl;
-                    cout << "starting simulation" << endl;
-                }
+                
+                burnCount++;
             }
         }
 
         // evolve the populations
         int count = 0;
         bool finished = false;
-        int burnoutLength = burnLength;
-        int outputFrequency = 50; // how often (in terms of generations) to print out data
         time_t start = time(0);
         
         // while the average body size is not at the target
@@ -180,10 +181,9 @@ int main(int argc, char** argv)
                     cout << "   Avg fitness: " << getTotalFitness(Pop, targetLbs, fitnessArr) / popSize << endl;
                     
                     // warnings
-                    double traitVal = getAverageLB(Pop);
-                    if(traitVal < (log(10.1))) {
+                    if(pow(10, (getAverageLB(Pop))) < 11.0) {
                         cout << "   Approaching lower bound on body size   ";
-                    } else if(traitVal > (log(990.0))) {
+                    } else if(pow(10, (getAverageLB(Pop))) > 990.0) {
                         cout << "   Approaching upper bound on body size   ";
                     }
                 }
@@ -283,7 +283,7 @@ void pickParents(vector<Individual> &population, double totalFitness, vector<Ind
 
 Individual mateParents(vector<Individual> parents, std::vector<double> mutList) {
     Individual baby(parents[0].phenotypeVal);
-    int mutRate = 100000;
+    int mutRate = 20000;
     int val;
     for(int i = 0; i < baby.lbMutations.size(); i++) {
         val = rand();
