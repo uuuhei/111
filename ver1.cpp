@@ -137,7 +137,7 @@ int main(int argc, char** argv)
 
         /* Burn-in the populations. The burnin phase will end (1) when the average log body size
          * gets acceptably close to the specified starting value OR (2) when the target number of
-         * generations is reached -- whichever comes first.
+         * generations is reached -- whichever comes last.
          */
 
         if (burnLength != 0) {
