@@ -4,36 +4,31 @@ author: "Chris Rice"
 date: "March 23, 2018"
 output: html_document
 ---
-## Introduction:
-
-Often, while there is an optimal phenotype for a complex trait such as suction index or maxillary kinematic transmission, an organism can achieve this in many different ways, such as by lengthening bones, increasing the size of muscles, or a combination of the two. This program simulates the evolution of a population of individuals undergoing selection, in order to explore how this “many-to-one” principle influences morphological convergence among lineages.
-Each repetition of simulation features two fish populations evolving towards a higher or lower suction index target value. However, a particular suction index is achieved through the interaction of five other traits: cross-sectional area of the epaxialis, in/out lever lengths, gape width, and buccal length. Each of these traits is randomly assigned (within observed limits in centrarchid fishes) at the start of the simulation, but the suction index is fixed at a set start value. Mutations directly change the values of the component traits, but selection occurs at the suction index level, resulting in multiple morphological paths to achieve the same target suction index, which are observed and recorded over the course of the simulation. 
-
 ## Installation:
 
-Install prerequisites using Homebrew.
+The program has two prerequisites: the CMake meta build system and the Eigen C++ library. If you want to compile it locally on your Mac, you can install these using Homebrew:
 
-```brew install eigen boost cmake```
-
-The simuation also calls on two separate files other than the main simulation.cpp:
-individual.h and eigenmultivariatenormal.h
-
-When running the simulation on Azathoth, it can be found in /home/analysis/chris/jaw-evolution-sim/cpp (individual.h and eigenmultivariatenormal.h are also located here)
-
-```cd /home/analysis/chris/jaw-evolution-sim/cpp```
+```brew install boost cmake```
 
 ## Directions:
 
-Build the simulator with Cmake.
+Aside from the main source file (simulation.cpp), the program also calls on a header file (individual.h), which has to be located in the same directory.
 
-```cd /home/analysis/chris/jaw-evolution-sim/cpp```
-```cmake .```
-```make -j```
+Build the simulator with CMake.
 
-Run the simulation using GNU parallel so that each set of output files gets its own suffix. For each suffix, the simulation outputs four files: one that follows the high population as it evolves, one that follows the low population as it evolves, one recording the parameters used, and one recording endpoint data. 
-Example: high_035.txt, low_035.txt, parameters_035.txt, endpoints_035.txt
-In this example, the simulation will be run 100 times:  
-```parallel --joblog readme_example_log --delay=3 ./simulation --start_si=0.1015 --min_si=0.041950778 --max_si=0.161049222 --popSize=500 --output_suffix {} ::: 001 002 003 004 005 006 007 008 009 010 011 012 013 014 015 016 017 018 019 020 021 022 023 024 025 026 027 028 029 030 031 032 033 034 035 036 037 038 039 040 041 042 043 044 045 046 047 048 049 050 051 052 053 054 055 056 057 058 059 060 061 062 063 064 065 066 067 068 069 070 071 072 073 074 075 076 077 078 079 080 081 082 083 084 085 086 087 088 089 090 091 092 093 094 095 096 097 098 099 100```
+```
+cd /home/analysis/path/to/sim
+cmake .
+make -j
+```
+
+Run the simulation using GNU parallel so that each set of output files gets its own suffix. For each suffix, the simulation outputs 3 files: one that follows the population as it evolves, one recording the parameters used, and one recording endpoint data. 
+
+Example: params_035.txt, parameters_035.txt, endpoints_035.txt
+
+In this example, the simulation will be run 100 times:
+  
+```parallel --joblog readme_example_log --delay=3 ./simulation --start_lb=2.0 --min_lb=1.0 --max_lb=3.0 --popSize=500 --output_suffix {} ::: 001 002 003 004 005 006 007 008 009 010 011 012 013 014 015 016 017 018 019 020 021 022 023 024 025 026 027 028 029 030 031 032 033 034 035 036 037 038 039 040 041 042 043 044 045 046 047 048 049 050 051 052 053 054 055 056 057 058 059 060 061 062 063 064 065 066 067 068 069 070 071 072 073 074 075 076 077 078 079 080 081 082 083 084 085 086 087 088 089 090 091 092 093 094 095 096 097 098 099 100```
 
 When using parallel, several relevant options are available:  
 --delay: set a few second delay between each replication of the simulation (for random number generation purposes)  
@@ -41,69 +36,51 @@ When using parallel, several relevant options are available:
 --dry-run: prints a list of individual commands that are all being made instead of in parallel (for checking that the syntax used will produce the right results)  
 
 For the simulation in particular, several variables can be manipulated directly from the terminal:  
---start_si: suction index value both populations begin the simulation at (in this example, this was the median value from a data file of centrarchid measurements)  
---max_si: target suction index value for the high population (in this example, 1/2 standard deviation above the median)  
---min_si: target suction index value for the low population (in this example, 1/2 standard deviation below the median)  
---endpointsensitivity: measure of how close the population needs to get to the target suction index value to complete the simulation  
---nSize: another sensitivity measure  
+--start_lb: log(body size) value the simulation starts at (in this example, 2.0, corresponding to 100 grams)  
+--max_lb: maximum allowed log(body size) value for the simulation to explore (in this example, one order of magnitude greater than the starting value)  
+--min_si: minimum allowed log(body size) value for the simulation to explore (in this example, one order of magnitude smaller than the starting value)  
+--endpointsensitivity: measure of how close the population needs to get to the target log(body size) value to complete the simulation  
 --mutCount: number of mutations in the population  
 --popSize: population size  
---gen_limit: maximum number of generations of evolution before the simulation terminates  
+--gen_limit: maximum number of generations of evolution before the simulation terminates 
+--burnLength: minimum length of the burnin period, during which the population converges onto the specified starting value from a random U(min_lb, max_lb) draw
  
  In addition to outputting files, the simulation also prints results to the terminal, recording the average suction index and fitness for each population every 50 generations:  
  
- ```simulation rep: 082 ------------------------------------------------------------------------```
+```
+simulation rep:  ------------------------------------------------------------------------
  
-```first burnin generation:``` 
-   ```low SI burnin: 0.101195   Avg fitness low pop: 0.163969```
-   ```high SI burnin: 0.101199   Avg fitness high pop: 0.174237```
+burnin generation: 0
+Avg body size: 228.457   Avg fitness: 0.983446
  
-```final burnin generation (250):```
-   ```low SI burnin: 0.101319   Avg fitness low pop: 0.166453```
-   ```high SI burnin: 0.101637   Avg fitness high pop: 0.167112```
-
-```start simulation```
-
-```generation: 0   SI low pop: 0.101425   Avg fitness low pop: 0.168256```
-```generation: 0   SI high pop: 0.101581   Avg fitness high pop: 0.168066```
-```generation: 50   SI low pop: 0.105196   Avg fitness low pop: 0.240825```
-```generation: 50   SI high pop: 0.0983705   Avg fitness high pop: 0.228869```
-```generation: 100   SI low pop: 0.109717   Avg fitness low pop: 0.351069```
-```generation: 100   SI high pop: 0.093867   Avg fitness high pop: 0.335348```
-```generation: 150   SI low pop: 0.114642   Avg fitness low pop: 0.495099```
-```generation: 150   SI high pop: 0.0901145   Avg fitness high pop: 0.441274```
-```generation: 200   SI low pop: 0.11923   Avg fitness low pop: 0.64122```
-```generation: 200   SI high pop: 0.0879629   Avg fitness high pop: 0.50724```
-```generation: 250   SI low pop: 0.123441   Avg fitness low pop: 0.771222```
-```generation: 250   SI high pop: 0.0859423   Avg fitness high pop: 0.571454```
-```generation: 300   SI low pop: 0.126348   Avg fitness low pop: 0.851155```
-```generation: 300   SI high pop: 0.0843837   Avg fitness high pop: 0.621606```
-```generation: 350   SI high pop: 0.0834856   Avg fitness high pop: 0.650464```
-```generation: 400   SI high pop: 0.0824722   Avg fitness high pop: 0.682733```
-```generation: 450   SI high pop: 0.0816274   Avg fitness high pop: 0.709291```
-```generation: 500   SI high pop: 0.0806303   Avg fitness high pop: 0.740133```
-```generation: 550   SI high pop: 0.0800255   Avg fitness high pop: 0.758387```
-```generation: 600   SI high pop: 0.0791289   Avg fitness high pop: 0.784867```
-```generation: 650   SI high pop: 0.078816   Avg fitness high pop: 0.7939```
-```generation: 700   SI high pop: 0.0784212   Avg fitness high pop: 0.805062```
-```generation: 750   SI high pop: 0.077466   Avg fitness high pop: 0.831295```
-```generation: 800   SI high pop: 0.0767062   Avg fitness high pop: 0.85118```
-```generation: 850   SI high pop: 0.0760356   Avg fitness high pop: 0.868015```
-```end simulation```
+burnin generation: 50
+Avg body size: 202.034   Avg fitness: 0.973064
  
-```final stats:``` 
+burnin generation: 100
+Avg body size: 170.794   Avg fitness: 0.95482
+```
 
-```high pop average SI: 0.0760356    high pop generations: 851``` 
-```low pop average SI: 0.12703    low pop generations: 307```
+(skip)
 
-```total time: 969 seconds```
+```
+burnin generation: 4650
+Avg body size: 113.421   Avg fitness: 0.992333
+ 
+generation: 0   Avg body size: 100.624   Avg fitness: 0.98148
+generation: 50   Avg body size: 131.033   Avg fitness: 0.963444
+generation: 100   Avg body size: 122.791   Avg fitness: 0.978776
+generation: 150   Avg body size: 104.93   Avg fitness: 0.986534
+generation: 200   Avg body size: 104.558   Avg fitness: 0.984476
+```
 
-## R Analysis Scripts:
+(skip)
 
-graph_gen_data(high_file, low_file): graphs changes and variance for all variables (suction index and its components:cross-sectional area of the epaxialis, in/out lever lengths, buccal length, and gape width)
-
-```graph_gen_data("high_035.txt", "low_035.txt")```
-
-graph_simulation_data(data_file): graphically represents endpoint data: generations passed, final suction index value, final fitness, vmor
-
-```graph_simulation_data("endpoints_035.txt")```
+```
+generation: 3350   Avg body size: 166.653   Avg fitness: 0.987866
+generation: 3400   Avg body size: 157.692   Avg fitness: 0.993693
+ending simulation
+ 
+final stats: 
+avg body size: 149.994    generations: 3428
+total time: 9 seconds
+```
