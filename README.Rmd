@@ -4,6 +4,7 @@ author: "Chris Rice"
 date: "March 23, 2018"
 output: html_document
 ---
+
 ## Installation:
 
 The program has two prerequisites: the CMake meta build system and the Eigen C++ library. If you want to compile it locally on your Mac, you can install these using Homebrew:
@@ -45,7 +46,7 @@ For the simulation in particular, several variables can be manipulated directly 
 --gen_limit: maximum number of generations of evolution before the simulation terminates 
 --burnLength: minimum length of the burnin period, during which the population converges onto the specified starting value from a random U(min_lb, max_lb) draw
  
- In addition to outputting files, the simulation also prints results to the terminal, recording the average suction index and fitness for each population every 50 generations:  
+In addition to outputting files, the simulation also prints results to the terminal, recording the average log(body size) and fitness every 50 generations:  
  
 ```
 simulation rep:  ------------------------------------------------------------------------
