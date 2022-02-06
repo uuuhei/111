@@ -27,8 +27,7 @@ int randominteger(int a, int b);
 
 // Evolving a population and the traits of its constituent individuals
 std::vector<double> getMutList(int mutCount, double traitStDev); // trait standard deviation
-void pickParents(vector<Individual> &population, double totalFitness, vector<Individual> &parents, double target, vector<double> &fitnessArr);
-Individual mateParents(vector<Individual> parents, std::vector<double> mutList);
+Individual pickAndMateParents(std::vector<Individual> &population, double totalFitness, double target, std::vector<double> &fitnessArr, std::vector<double> mutList);
 bool checkBaby(Individual baby, double lowerLim, double upperLim);
 void evolvePop(vector<Individual> &population, double target, double lowerLim, double upperLim, int popSize, const std::vector<double> mutList, int numShelters, bool showShelterStats);
 
@@ -287,10 +286,12 @@ std::vector<double> getMutList(int mutCount, const double traitStDev) {
 }
 
 
-// Randomly pick two parents from the current generation
+// Randomly pick two parents from the current generation and make a baby from them
 
-void pickParents(vector<Individual> &population, double totalFitness, vector<Individual> &parents, double target, vector<double> &fitnessArr) {
+Individual pickAndMateParents(std::vector<Individual> &population, double totalFitness, double target, std::vector<double> &fitnessArr, std::vector<double> mutList) {
+    // Pick parents
     int parentsPicked = 0;
+    std::vector<int> parentIdx;
 
     while(parentsPicked < 2) {
         double tempFitness = 0;
@@ -298,21 +299,19 @@ void pickParents(vector<Individual> &population, double totalFitness, vector<Ind
         for(int i = 0; i < population.size(); i++) {
             tempFitness = tempFitness + fitnessArr[i];
             // cout << tempFitness << " " << rand << endl;
-            if(tempFitness > rand) {
-                parents[parentsPicked] = population[i];
+            if (tempFitness > rand) {
+                parentIdx.push_back(i);
                 parentsPicked++;
                 break;
             }
         }
     }
-}
-
-
-// Make a baby from two parents
-
-Individual mateParents(std::vector<Individual> parents, std::vector<double> mutList) {
+    
+    int parentAidx = parentIdx[0];
+    int parentBidx = parentIdx[1];
+    
     // The baby is initialized with no shelter
-    Individual baby(parents[0].phenotypeVal);
+    Individual baby(population[parentAidx].phenotypeVal);
     int mutRate = 20000;
     int val;
     
@@ -322,9 +321,9 @@ Individual mateParents(std::vector<Individual> parents, std::vector<double> mutL
         if(val % mutRate == 0) {
             baby.lbMutations[i] = mutList[i];
         } else if(val %2 == 0){
-            baby.lbMutations[i] = parents[0].lbMutations[i];
+            baby.lbMutations[i] = population[parentAidx].lbMutations[i];
         } else{
-            baby.lbMutations[i] = parents[1].lbMutations[i];
+            baby.lbMutations[i] = population[parentBidx].lbMutations[i];
         }
     }
     
@@ -334,19 +333,19 @@ Individual mateParents(std::vector<Individual> parents, std::vector<double> mutL
      * have it, the one that will pass it on to the offspring is selected at random.
      */
     
-    if (parents[0].hasShelter() == true && parents[1].hasShelter() == false) {
+    if (population[parentAidx].hasShelter() == true && population[parentBidx].hasShelter() == false) {
         baby.setShelter(true);
-        parents[0].setShelter(false);
-    } else if (parents[0].hasShelter() == false && parents[1].hasShelter() == true) {
+        population[parentAidx].setShelter(false);
+    } else if (population[parentAidx].hasShelter() == false && population[parentBidx].hasShelter() == true) {
         baby.setShelter(true);
-        parents[1].setShelter(false);
-    } else if (parents[0].hasShelter() == true && parents[1].hasShelter() == true) {
+        population[parentBidx].setShelter(false);
+    } else if (population[parentAidx].hasShelter() == true && population[parentBidx].hasShelter() == true) {
         baby.setShelter(true);
         double coinToss = randomdouble(0, 1);
         if (coinToss <= 0.5) {
-            parents[0].setShelter(false);
+            population[parentAidx].setShelter(false);
         } else {
-            parents[1].setShelter(false);
+            population[parentBidx].setShelter(false);
         }
     }
 
@@ -380,13 +379,10 @@ void evolvePop(vector<Individual> &population, double target, double lowerLim, d
     int counter = 0;
     int stallCount = 0;
     Individual ind = population[0];
-    std::vector<Individual> parents(2, ind);
     std::vector<Individual> newPop(popSize, ind);
     while(counter < popSize) {
-        // Pick parents
-        pickParents(population, totalFitness, parents, target, fitnessArr);
-        // Make a baby
-        Individual baby = mateParents(parents, mutList);
+        // Pick parents and make a baby
+        Individual baby = pickAndMateParents(population, totalFitness, target, fitnessArr, mutList);
 
         if (!checkBaby(baby, lowerLim, upperLim)) {
             stallCount++;
@@ -408,21 +404,23 @@ void evolvePop(vector<Individual> &population, double target, double lowerLim, d
             shelteredIndividuals.push_back(i);
         }
     }
+    int availableShelters = (int) (numShelters - shelteredIndividuals.size());
     
     // Print out the number of assigned and unassigned shelters
     if (showShelterStats) {
         cout << "   Assigned shelters: " << shelteredIndividuals.size() << endl;
-        cout << "   Unassigned shelters: " << (int) (numShelters - shelteredIndividuals.size()) << endl;
+        cout << "   Unassigned shelters: " << availableShelters << endl;
     }
     
     // Assign remaining shelters at random
-    int availableShelters = numShelters - shelteredIndividuals.size();
     while(availableShelters > 0) {
         // Select an individual at random
         int ind = randominteger(0, popSize - 1);
         // Only assign a shelter to this individual if it does not have one already
         if (std::find(shelteredIndividuals.begin(), shelteredIndividuals.end(), ind) == shelteredIndividuals.end()) {
             newPop[ind].setShelter(true);
+            // Decrement the number of available shelters
+            availableShelters--;
         }
     }
 
