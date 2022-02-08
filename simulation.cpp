@@ -29,7 +29,7 @@ int randominteger(int a, int b);
 std::vector<double> getMutList(int mutCount, double traitStDev); // trait standard deviation
 Individual pickAndMateParents(std::vector<Individual> &population, double totalFitness, double target, std::vector<double> &fitnessArr, std::vector<double> mutList);
 bool checkBaby(Individual baby, double lowerLim, double upperLim);
-void evolvePop(vector<Individual> &population, double target, double lowerLim, double upperLim, int popSize, const std::vector<double> mutList, int numShelters, bool showShelterStats);
+void evolvePop(vector<Individual> &population, double target, double lowerLim, double upperLim, int popSize, const std::vector<double> mutList, int numShelters, double calamFreq, double calamStrength, bool showShelterStats);
 
 // Extracting data
 double getTotalFitness(vector<Individual> &population, double target, vector<double> &fitnessArr);
@@ -144,7 +144,7 @@ int main(int argc, char** argv)
             int burnCount = 0;
             while(fabs(pow(10, getAverageLB(Pop)) - pow(10, start_lb)) > endpointsensitivity || burnCount < burnLength) {
                 
-                evolvePop(Pop, start_lb, min_lb, max_lb, popSize, mutList, 0, false);
+                evolvePop(Pop, start_lb, min_lb, max_lb, popSize, mutList, 0, 0, 0, false);
             
                 if(burnCount % outputFrequency == 0) {
                     cout << "burnin generation: " << burnCount << endl;
@@ -179,6 +179,8 @@ int main(int argc, char** argv)
         int count = 0;
         bool finished = false;
         time_t start = time(0);
+        double calamityFrequency = 0.1;
+        double calamityStrength = 0.1;
         
         // While the average body size is not at the target
         while(!finished && count < gen_limit) {
@@ -193,7 +195,7 @@ int main(int argc, char** argv)
             if(fabs(pow(10, getAverageLB(Pop)) - pow(10, targetLbs)) > endpointsensitivity) {
                 
                 if (count % outputFrequency == 0) {
-                    evolvePop(Pop, targetLbs, min_lb, max_lb, popSize, mutList, nShelters, true);
+                    evolvePop(Pop, targetLbs, min_lb, max_lb, popSize, mutList, nShelters, calamityFrequency, calamityStrength, true);
                     cout << "generation: " << count;
                     cout << "   Avg body size: " << pow(10, (getAverageLB(Pop))); //编一个新的function，得到正常bodysize的数据 - 搞定
                     std::vector<double> fitnessArr(popSize, 0.0);
@@ -207,7 +209,7 @@ int main(int argc, char** argv)
                     }
                 } else {
                     // Evolve quietly
-                    evolvePop(Pop, targetLbs, min_lb, max_lb, popSize, mutList, nShelters, false);
+                    evolvePop(Pop, targetLbs, min_lb, max_lb, popSize, mutList, nShelters, calamityFrequency, calamityStrength, false);
                 }
             } else {
                 finished = true;
@@ -369,20 +371,62 @@ bool checkBaby(Individual baby, double lowerLim, double upperLim) {
 
 // Step the population forward by 1 generation
 
-void evolvePop(vector<Individual> &population, double target, double lowerLim, double upperLim, int popSize, const std::vector<double> mutList, int numShelters, bool showShelterStats) {
+void evolvePop(vector<Individual> &population, double target, double lowerLim, double upperLim, int popSize, const std::vector<double> mutList, int numShelters, double calamFreq, double calamStrength, bool showShelterStats) {
 
-    std::vector<double> fitnessArr(popSize, 0.0);
+    std::vector<Individual> reproductivePop;
+    
+    // Calamity check
+    double randomDraw = randomdouble(0, 1);
+    if (randomDraw < calamFreq) {
+        std::vector<Individual> shelteredAndSurvivors;
+        std::vector<Individual> unshelteredPop;
+        int deathToll = ceil(calamStrength * population.size());
+        
+        // Divide the population into sheltered and unsheltered individuals
+        for(int i = 0; i < population.size(); i++) {
+            if (population[i].hasShelter() == true) {
+                shelteredAndSurvivors.push_back(population[i]);
+            } else {
+                unshelteredPop.push_back(population[i]);
+            }
+        }
+        
+        // Get the indices of n = deathToll individuals to be eliminated from unshelteredPop
+        std::vector<int> toEliminate;
+        for(int j = 0; j < deathToll; j++) {
+            int killed = randominteger(0, (int) (unshelteredPop.size() - 1));
+            toEliminate.push_back(killed);
+        }
+        
+        // Uncomment the line below for more verbose output:
+        // cout << "   A calamity eliminated " << toEliminate.size() << " unsheltered individuals." << endl;
+        
+        // Add the survivors (= unshelteredPop members not in toEliminate) to the sheltered individuals
+        for(int k = 0; k < unshelteredPop.size(); k++) {
+            if (std::find(toEliminate.begin(), toEliminate.end(), k) == toEliminate.end()) {
+                shelteredAndSurvivors.push_back(unshelteredPop[k]);
+            }
+        }
+        
+        // Reproductive population set to the union of sheltered individuals and unsheltered survivors
+        reproductivePop = shelteredAndSurvivors;
+    } else {
+        // If no calamity has occurred, reproductive population = total population
+        reproductivePop = population;
+    }
+    
     // Get total fitness
-    double totalFitness = getTotalFitness(population, target, fitnessArr);
+    std::vector<double> fitnessArr(reproductivePop.size(), 0.0);
+    double totalFitness = getTotalFitness(reproductivePop, target, fitnessArr);
     
     // Loop for length of population, make babies
     int counter = 0;
     int stallCount = 0;
-    Individual ind = population[0];
+    Individual ind = reproductivePop[0];
     std::vector<Individual> newPop(popSize, ind);
     while(counter < popSize) {
         // Pick parents and make a baby
-        Individual baby = pickAndMateParents(population, totalFitness, target, fitnessArr, mutList);
+        Individual baby = pickAndMateParents(reproductivePop, totalFitness, target, fitnessArr, mutList);
 
         if (!checkBaby(baby, lowerLim, upperLim)) {
             stallCount++;
@@ -399,9 +443,9 @@ void evolvePop(vector<Individual> &population, double target, double lowerLim, d
     
     // Check for unassigned shelters
     std::vector<int> shelteredIndividuals;
-    for(int i = 0; i < popSize; i++) {
-        if (newPop[i].hasShelter() == true) {
-            shelteredIndividuals.push_back(i);
+    for(int l = 0; l < popSize; l++) {
+        if (newPop[l].hasShelter() == true) {
+            shelteredIndividuals.push_back(l);
         }
     }
     int availableShelters = (int) (numShelters - shelteredIndividuals.size());
@@ -425,6 +469,7 @@ void evolvePop(vector<Individual> &population, double target, double lowerLim, d
     }
 
     population = newPop;
+    reproductivePop.clear();
     newPop.clear();
 }
 
