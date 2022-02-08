@@ -52,9 +52,11 @@ int main(int argc, char** argv)
         ("endpointsensitivity", po::value<double>()->default_value(0.01), "How close average fitness gets to 1")
         ("reps", po::value<int>()->default_value(1), "Number of simulation repetitions")
         ("gen_limit", po::value<int>()->default_value(30000), "Maximum number of generations before cutting short simulation run")
-        ("min_lb", po::value<double>()->default_value(1), "log of minimum body size")    // log_10(10)
-        ("max_lb", po::value<double>()->default_value(3), "log of maximum body size")    // log_10(1000)
-        ("start_lb", po::value<double>()->default_value(2), "log of starting body size") // log_10(100)
+        ("min_lb", po::value<double>()->default_value(1), "Log of minimum body size")    // log_10(10)
+        ("max_lb", po::value<double>()->default_value(3), "Log of maximum body size")    // log_10(1000)
+        ("start_lb", po::value<double>()->default_value(2), "Log of starting body size") // log_10(100)
+        ("calamityFrequency", po::value<double>()->default_value(0.1), "Frequency of calamities affecting unsheltered individuals")
+        ("calamityStrength", po::value<double>()->default_value(0.1), "Fraction of the population eliminated by a calamity")
         ("burnLength", po::value<double>()->default_value(0), "Length of burnin and burnout")
 	 // ("output_prefix", po::value<int>()->default_value(""), "Prefix for output files")
         ("output_suffix", po::value<string>()->default_value(""), "Prefix for output files");
@@ -72,6 +74,8 @@ int main(int argc, char** argv)
     const double min_lb = vm["min_lb"].as<double>();
     const double max_lb = vm["max_lb"].as<double>();
     const double start_lb = vm["start_lb"].as<double>();
+    const double calamityFrequency = vm["calamityFrequency"].as<double>();
+    const double calamityStrength = vm["calamityStrength"].as<double>();
     const double burnLength = vm["burnLength"].as<double>(); // this is just the *minimum* burnin length
     // const string output_prefix = vm["output_prefix"].as<string>();
     const string output_suffix = vm["output_suffix"].as<string>();
@@ -179,8 +183,6 @@ int main(int argc, char** argv)
         int count = 0;
         bool finished = false;
         time_t start = time(0);
-        double calamityFrequency = 0.1;
-        double calamityStrength = 0.1;
         
         // While the average body size is not at the target
         while(!finished && count < gen_limit) {
