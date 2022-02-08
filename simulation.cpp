@@ -55,6 +55,7 @@ int main(int argc, char** argv)
         ("min_lb", po::value<double>()->default_value(1), "Log of minimum body size")    // log_10(10)
         ("max_lb", po::value<double>()->default_value(3), "Log of maximum body size")    // log_10(1000)
         ("start_lb", po::value<double>()->default_value(2), "Log of starting body size") // log_10(100)
+        ("nShelters", po::value<int>()->default_value(10), "Number of shelters available to each generation") // Set to 10% of popSize by default
         ("calamityFrequency", po::value<double>()->default_value(0.1), "Frequency of calamities affecting unsheltered individuals")
         ("calamityStrength", po::value<double>()->default_value(0.1), "Fraction of the population eliminated by a calamity")
         ("burnLength", po::value<double>()->default_value(0), "Length of burnin and burnout")
@@ -74,6 +75,8 @@ int main(int argc, char** argv)
     const double min_lb = vm["min_lb"].as<double>();
     const double max_lb = vm["max_lb"].as<double>();
     const double start_lb = vm["start_lb"].as<double>();
+    // After burnin, give shelter to 10% of individuals in the population
+    const int nShelters = vm["nShelters"].as<int>();
     const double calamityFrequency = vm["calamityFrequency"].as<double>();
     const double calamityStrength = vm["calamityStrength"].as<double>();
     const double burnLength = vm["burnLength"].as<double>(); // this is just the *minimum* burnin length
@@ -161,9 +164,6 @@ int main(int argc, char** argv)
                 burnCount++;
             }
         }
-        
-        // After burnin, give shelter to 10% of individuals in the population
-        int nShelters = ceil(0.1 * popSize);
         
         // Randomly select individuals to receive shelter
         std::vector<int> shelterIdx;
