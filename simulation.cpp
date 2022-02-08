@@ -35,7 +35,7 @@ void evolvePop(vector<Individual> &population, double target, double lowerLim, d
 double getTotalFitness(vector<Individual> &population, double target, vector<double> &fitnessArr);
 double getAverageLB(vector<Individual> &population);
 double getVmor(vector<Individual> &population);
-string getData(vector<Individual> &population);
+string getData(vector<Individual> &population, double target);
 
 
 int main(int argc, char** argv)
@@ -107,7 +107,7 @@ int main(int argc, char** argv)
         params << "params_" << output_suffix << ".txt";
         string pName = params.str();
         ofstream genFile(pName.c_str());
-        genFile << "gen\tavg_bd\tvar_bd\n";
+        genFile << "gen\tavg_bd\tvar_bd\tavg_fit\n";
 
         // generation files closing
 
@@ -189,7 +189,7 @@ int main(int argc, char** argv)
             
             // Outputing all the generation level data:
             if(!finished && count % outputFrequency == 0) {
-                string data = getData(Pop);
+                string data = getData(Pop, targetLbs);
                 genFile << count << "\t" << data;
             }
 
@@ -530,7 +530,7 @@ double getVmor(vector<Individual> &population) {
 
 // Get the population means and variances of individual traits - 需要修改，已经不再是individual traits了
 
-string getData(vector<Individual> &population) {
+string getData(vector<Individual> &population, double target) {
 
     std::stringstream s;
     int popSize = population.size();
@@ -553,7 +553,13 @@ string getData(vector<Individual> &population) {
         lbVar += ((popVects[j] - lbMean) * (popVects[j] - lbMean)) / popSize;
     }
 
-    s << lbVar << "\n";
+    s << lbVar << "\t";
+    
+    // getting average fitness
+    std::vector<double> fitnessArr(popSize, 0.0);
+    double avgFitness = getTotalFitness(population, target, fitnessArr) / popSize;
+    
+    s << avgFitness << "\n";
 
     string data = s.str();
     return data;
