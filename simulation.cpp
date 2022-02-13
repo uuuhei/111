@@ -69,13 +69,12 @@ int main(int argc, char** argv)
     po::notify(vm);
     const int mutCount = vm["mutCount"].as<int>();
     const int popSize = vm["popSize"].as<int>();
-    const double endpointsensitivity = vm["endpointsensitivity"].as<double>(); // used 0.001 in Zack's sims -- using 0.05 you get average population fitness of <0.05
+    const double endpointsensitivity = vm["endpointsensitivity"].as<double>();
     const int reps = vm["reps"].as<int>();
     const int gen_limit = vm["gen_limit"].as<int>();
     const double min_lb = vm["min_lb"].as<double>();
     const double max_lb = vm["max_lb"].as<double>();
     const double start_lb = vm["start_lb"].as<double>();
-    // After burnin, give shelter to 10% of individuals in the population
     const int nShelters = vm["nShelters"].as<int>();
     const double calamityFrequency = vm["calamityFrequency"].as<double>();
     const double calamityStrength = vm["calamityStrength"].as<double>();
@@ -242,29 +241,32 @@ int main(int argc, char** argv)
 }
 
 
-// Get a random number uniformly distributed between a, b
+// Get a random real number uniformly distributed between a, b
 
 double randomdouble(double a, double b) {
-    double random = ((double) rand()) / (double) RAND_MAX;
-    double diff = b - a;
-    double r = random * diff;
-    return a + r;
+    // Source of randomness for initializing random seed (http://stackoverflow.com/a/38245134)
+    std::random_device rd;
+    // Define a uniform distribution over reals
+    std::uniform_real_distribution<double> unifDouble(a, b);
+    // Mersenne twister pseudorandom number generator, initialized with a seed generated above
+    std::mt19937 prng(rd());
+    // Make a random draw from the distribution defined above
+    double random = unifDouble(prng);
+    
+    return random;
 }
 
 
 // Get a random integer uniformly distributed between a, b
 
 int randominteger(int a, int b) {
-    // source of randomness for initializing random seed (http://stackoverflow.com/a/38245134)
     std::random_device rd;
-    // define uniform distribution
+    // Define a uniform distribution over integers
     std::uniform_int_distribution<int> unifInt(a, b);
-    // Mersenne twister pseudorandom number generator, initialized with a seed generated above
     std::mt19937 prng(rd());
-    // Make a random draw from the distribution defined above
     int randInt = unifInt(prng);
     
-    return(randInt);
+    return randInt;
 }
 
 
@@ -321,7 +323,7 @@ Individual pickAndMateParents(std::vector<Individual> &population, double totalF
     
     // Genotype inheritance
     for(int i = 0; i < baby.lbMutations.size(); i++) {
-        val = rand();
+        val = randominteger(0, RAND_MAX);
         if(val % mutRate == 0) {
             baby.lbMutations[i] = mutList[i];
         } else if(val %2 == 0){
