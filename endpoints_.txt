@@ -1,1 +1,0 @@
-averageBodySize	bodySizeVariance	averageBequeathalProb	bequeathalProbVariance	averageFitness	generationsPassed
