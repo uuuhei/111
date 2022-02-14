@@ -1,0 +1,2 @@
+popSize	bodySizeTarget	mutCount	endpointSensitivity
+100	150	1000	0.01

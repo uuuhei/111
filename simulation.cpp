@@ -347,7 +347,7 @@ Individual pickAndMateParents(std::vector<Individual> &population, double totalF
     
     // Genotype inheritance
     for(int i = 0; i < baby.lbMutations.size(); i++) {
-        val = randominteger(0, RAND_MAX);
+        val = rand(); // using val = randominteger(0, RAND_MAX) causes a huge performance hit
         if(val % mutRate == 0) {
             baby.lbMutations[i] = mutList[i][0];
             baby.bpMutations[i] = mutList[i][1];
@@ -415,7 +415,6 @@ bool checkBaby(Individual baby, double lowerLim, double upperLim) {
 
     // Body size constraints are user-specified; bequeathal probability has to be in [0, 1]
     if ((lb < lowerLim || lb > upperLim) || (bp < 0.0 || bp > 1.0)) {
-        int stopper = 0;
         return false;
     }
     
@@ -484,7 +483,7 @@ void evolvePop(vector<Individual> &population, double target, double lowerLim, d
 
         if (!checkBaby(baby, lowerLim, upperLim)) {
             stallCount++;
-            if(stallCount > 500) {
+            if (stallCount > 500) {
                 cout << "problem" << endl;
                 stallCount = 0;
             }
