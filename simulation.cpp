@@ -27,7 +27,7 @@ int randominteger(int a, int b);
 double variance(std::vector<double> vals, double mean);
 
 // Evolving a population and the traits of its constituent individuals
-std::vector<std::vector<double> > getMutList(int mutCount, const double bodySizeStDev, const double beqProbStDev);
+std::vector<std::vector<double> > getMutList(int mutCount, const double lbStDev, const double bpStDev);
 Individual pickAndMateParents(std::vector<Individual> &population, double totalFitness, double target, std::vector<double> &fitnessArr, std::vector<std::vector<double> > mutList);
 bool checkBaby(Individual baby, double lowerLim, double upperLim);
 void evolvePop(vector<Individual> &population, double target, double lowerLim, double upperLim, int popSize, const std::vector<std::vector<double> > mutList, int numShelters, double calamFreq, double calamStrength, bool showShelterStats);
@@ -43,7 +43,7 @@ int main(int argc, char** argv)
 {
     
     // Standard deviation of log body size
-    const double bodySizeStDev = 0.05;
+    const double bodySizeStDev = 0.01;
     // Standard deviation of bequeathal probability
     const double beqProbStDev = 0.025;
     
@@ -160,12 +160,29 @@ int main(int argc, char** argv)
                     cout << "Avg body size: " << pow(10, (getTraitMean(Pop, "bodySize")));
                     cout << "   Avg bequeathal prob: " << getTraitMean(Pop, "beqProb");
                     std::vector<double> fitnessArr(popSize, 0.0);
-                    cout << "   Avg fitness: " << getTotalFitness(Pop, targetLbs, fitnessArr) / popSize << endl;
+                    cout << "   Avg fitness: " << getTotalFitness(Pop, start_lb, fitnessArr) / popSize << endl;
                     cout << " " << endl;
                 }
                 
                 burnCount++;
             }
+            
+            /* The process of generating genotypic variation during the burnin period caused the
+             * bequeathal probability to diverge from the user-specified value. Here, we keep the
+             * body size values generated during burnin, but set bequeathal probability back to
+             * the starting value by creating a temporary copy of the population.
+             */
+            
+            std::vector<Individual> tempPop;
+            for (int i = 0; i < popSize; i++) {
+                double replacementPhenotype [2] = {Pop[i].logBodySize, start_bp};
+                Individual newOne(replacementPhenotype);
+                tempPop.push_back(newOne);
+            }
+            
+            // Reassign and delete
+            Pop = tempPop;
+            tempPop.clear();
         }
         
         // Randomly select individuals to receive shelter
@@ -295,12 +312,12 @@ double variance(std::vector<double> vals, double mean) {
  * have different standard deviations, passed in as the 2nd and 3rd argument, respectively.
  */
 
-std::vector<std::vector<double> > getMutList(int mutCount, const double bodySizeStDev, const double beqProbStDev) {
+std::vector<std::vector<double> > getMutList(int mutCount, const double lbStDev, const double bpStDev) {
     
     std::random_device randomnessSource;
     // Define univariate normal distributions
-    std::normal_distribution<double> lbMutMaker(0.0, bodySizeStDev);
-    std::normal_distribution<double> bpMutMaker(0.0, beqProbStDev);
+    std::normal_distribution<double> lbMutMaker(0.0, lbStDev);
+    std::normal_distribution<double> bpMutMaker(0.0, bpStDev);
     // Blank vector for initialization
     std::vector<double> zeros(2, 0.0);
     // Store draws from the normal distributions specified above using a for loop
