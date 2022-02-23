@@ -37,8 +37,8 @@ public:
         return bprob;
     }
     
-    double getFitness(double target) {
-        double distance = pow((getLB() - target), 2) * -.5;
+    double getFitness(double target, double strengthOfSelection) {
+        double distance = -1 * strengthOfSelection * pow((getLB() - target), 2);
         return exp(distance);
     }
     

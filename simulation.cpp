@@ -30,13 +30,13 @@ double variance(std::vector<double> vals, double mean);
 std::vector<std::vector<double> > getMutList(int mutCount, const double lbStDev, const double bpStDev);
 Individual pickAndMateParents(std::vector<Individual> &population, double totalFitness, double target, std::vector<double> &fitnessArr, std::vector<std::vector<double> > mutList);
 bool checkBaby(Individual baby, double lowerLim, double upperLim);
-void evolvePop(vector<Individual> &population, double target, double lowerLim, double upperLim, int popSize, const std::vector<std::vector<double> > mutList, int numShelters, double calamFreq, double calamStrength, bool showShelterStats);
+void evolvePop(vector<Individual> &population, double target, double selStrength, double lowerLim, double upperLim, int popSize, const std::vector<std::vector<double> > mutList, int numShelters, double calamFreq, double calamStrength, bool showShelterStats);
 
 // Extracting data
-double getTotalFitness(std::vector<Individual> &population, double target, std::vector<double> &fitnessArr);
+double getTotalFitness(std::vector<Individual> &population, double target, double selStrength, std::vector<double> &fitnessArr);
 double getTraitMean(std::vector<Individual> &population, string trait);
 double getTraitVar(std::vector<Individual> &population, string trait);
-string getData(std::vector<Individual> &population, double target);
+string getData(std::vector<Individual> &population, double target, double selStrength);
 
 
 int main(int argc, char** argv)
@@ -55,15 +55,16 @@ int main(int argc, char** argv)
         ("endpointsensitivity", po::value<double>()->default_value(0.01), "How close average fitness gets to 1")
         ("reps", po::value<int>()->default_value(1), "Number of simulation repetitions")
         ("gen_limit", po::value<int>()->default_value(30000), "Maximum number of generations before cutting short simulation run")
+        ("burnin", po::value<bool>()->default_value(true), "Should the simulation generate some initial variation first?")
         ("min_lb", po::value<double>()->default_value(1.0), "Log of minimum body size")        // log_10(10)
         ("max_lb", po::value<double>()->default_value(3.0), "Log of maximum body size")        // log_10(1000)
         ("start_lb", po::value<double>()->default_value(2.0), "Log of starting body size")     // log_10(100)
         ("target_lb", po::value<double>()->default_value(2.176091), "Log of target body size") // log_10(150)
+        ("selection_strength", po::value<double>()->default_value(0.5), "Penalty incurred by increasing distance from target body size")
         ("start_bp", po::value<double>()->default_value(0.05), "Starting bequeathal probability")
-        ("nShelters", po::value<int>()->default_value(10), "Number of shelters available to each generation") // Set to 10% of popSize by default
+        ("shelterFraction", po::value<double>()->default_value(0.1), "Fraction of the population possessing shelter") // Set to 10% by default
         ("calamityFrequency", po::value<double>()->default_value(0.1), "Frequency of calamities affecting unsheltered individuals")
         ("calamityStrength", po::value<double>()->default_value(0.1), "Fraction of the population eliminated by a calamity")
-        ("burnLength", po::value<int>()->default_value(0), "Minimum burnin length")
 	 // ("output_prefix", po::value<int>()->default_value(""), "Prefix for output files")
         ("output_suffix", po::value<string>()->default_value(""), "Prefix for output files");
 
@@ -77,22 +78,23 @@ int main(int argc, char** argv)
     const double endpointsensitivity = vm["endpointsensitivity"].as<double>();
     const int reps = vm["reps"].as<int>();
     const int gen_limit = vm["gen_limit"].as<int>();
+    const bool burnin = vm["burnin"].as<bool>();
     const double min_lb = vm["min_lb"].as<double>();
     const double max_lb = vm["max_lb"].as<double>();
     const double start_lb = vm["start_lb"].as<double>();
-    const double targetLbs = vm["target_lb"].as<double>();
+    const double target_lb = vm["target_lb"].as<double>();
+    const double selection_strength = vm["selection_strength"].as<double>();
     const double start_bp = vm["start_bp"].as<double>();
-    const int nShelters = vm["nShelters"].as<int>();
+    const double shelterFraction = vm["shelterFraction"].as<double>();
     const double calamityFrequency = vm["calamityFrequency"].as<double>();
     const double calamityStrength = vm["calamityStrength"].as<double>();
-    const int burnLength = vm["burnLength"].as<int>();
  // const string output_prefix = vm["output_prefix"].as<string>();
     const string output_suffix = vm["output_suffix"].as<string>();
 
     // Output user-specified parameter values
     ofstream pFile("simulation_settings_" + output_suffix + ".txt");
     pFile << "popSize\tbodySizeTarget\tmutCount\tendpointSensitivity" << endl; //
-    pFile << popSize << "\t" << pow(10, targetLbs) << "\t" << mutCount << "\t" << endpointsensitivity << endl;
+    pFile << popSize << "\t" << pow(10, target_lb) << "\t" << mutCount << "\t" << endpointsensitivity << endl;
     pFile.close();
 
     // Output stream
@@ -129,7 +131,7 @@ int main(int argc, char** argv)
          
         double startingPhenotype [2];
         
-        if (burnLength != 0) {
+        if (burnin) {
             startingPhenotype[0] = randomdouble(min_lb, max_lb); // random initial log body size
         } else {
             startingPhenotype[0] = start_lb;
@@ -143,24 +145,26 @@ int main(int argc, char** argv)
         
         // How often (in terms of generations) to print out data
         int outputFrequency = 50;
+        
+        // Get the absolute number of shelters available to the population
+        int nShelters = ceil(shelterFraction * popSize);
 
-        /* Burn in the populations. The burnin phase will end (1) when the average log body size
-         * gets acceptably close to the specified starting value OR (2) when the target number of
-         * generations is reached -- whichever comes last.
+        /* Burn in the populations. The burnin phase will end when the average log body size gets
+         * gets acceptably close to the specified starting value.
          */
 
-        if (burnLength != 0) {
+        if (burnin) {
             int burnCount = 0;
-            while(fabs(pow(10, getTraitMean(Pop, "bodySize")) - pow(10, start_lb)) > endpointsensitivity || burnCount < burnLength) {
+            while(fabs(pow(10, getTraitMean(Pop, "bodySize")) - pow(10, start_lb)) > endpointsensitivity) {
                 
-                evolvePop(Pop, start_lb, min_lb, max_lb, popSize, mutList, 0, 0, 0, false);
+                evolvePop(Pop, start_lb, selection_strength, min_lb, max_lb, popSize, mutList, 0, 0, 0, false);
             
                 if(burnCount % outputFrequency == 0) {
                     cout << "burnin generation: " << burnCount << endl;
                     cout << "Avg body size: " << pow(10, (getTraitMean(Pop, "bodySize")));
                     cout << "   Avg bequeathal prob: " << getTraitMean(Pop, "beqProb");
                     std::vector<double> fitnessArr(popSize, 0.0);
-                    cout << "   Avg fitness: " << getTotalFitness(Pop, start_lb, fitnessArr) / popSize << endl;
+                    cout << "   Avg fitness: " << getTotalFitness(Pop, start_lb, selection_strength, fitnessArr) / popSize << endl;
                     cout << " " << endl;
                 }
                 
@@ -209,20 +213,20 @@ int main(int argc, char** argv)
             
             // Outputing all the generation level data:
             if(!finished && count % outputFrequency == 0) {
-                string data = getData(Pop, targetLbs);
+                string data = getData(Pop, target_lb, selection_strength);
                 genFile << count << "\t" << data;
             }
 
             // Checking if the population has finished evolving
-            if(fabs(pow(10, getTraitMean(Pop, "bodySize")) - pow(10, targetLbs)) > endpointsensitivity) {
+            if(fabs(pow(10, getTraitMean(Pop, "bodySize")) - pow(10, target_lb)) > endpointsensitivity) {
                 
                 if (count % outputFrequency == 0) {
-                    evolvePop(Pop, targetLbs, min_lb, max_lb, popSize, mutList, nShelters, calamityFrequency, calamityStrength, true);
+                    evolvePop(Pop, target_lb, selection_strength, min_lb, max_lb, popSize, mutList, nShelters, calamityFrequency, calamityStrength, true);
                     cout << "generation: " << count;
                     cout << "   Avg body size: " << pow(10, (getTraitMean(Pop, "bodySize")));
                     cout << "   Avg bequeathal prob: " << getTraitMean(Pop, "beqProb");
                     std::vector<double> fitnessArr(popSize, 0.0);
-                    cout << "   Avg fitness: " << getTotalFitness(Pop, targetLbs, fitnessArr) / popSize << endl;
+                    cout << "   Avg fitness: " << getTotalFitness(Pop, target_lb, selection_strength, fitnessArr) / popSize << endl;
                     
                     // Warnings
                     if(pow(10, (getTraitMean(Pop, "bodySize"))) < 11.0) {
@@ -232,7 +236,7 @@ int main(int argc, char** argv)
                     }
                 } else {
                     // Evolve quietly
-                    evolvePop(Pop, targetLbs, min_lb, max_lb, popSize, mutList, nShelters, calamityFrequency, calamityStrength, false);
+                    evolvePop(Pop, target_lb, selection_strength, min_lb, max_lb, popSize, mutList, nShelters, calamityFrequency, calamityStrength, false);
                 }
             } else {
                 finished = true;
@@ -253,7 +257,7 @@ int main(int argc, char** argv)
 
         // Print endpoint data
         std::vector<double> fitnessArr(popSize, 0.0);
-        outputFile << pow(10, (getTraitMean(Pop, "bodySize"))) << "\t" << getTraitVar(Pop, "bodySize") << "\t" << getTraitMean(Pop, "beqProb") << "\t" << getTraitVar(Pop, "beqProb") << "\t" << getTotalFitness(Pop, targetLbs, fitnessArr) / popSize << "\t" << count << endl;
+        outputFile << pow(10, (getTraitMean(Pop, "bodySize"))) << "\t" << getTraitVar(Pop, "bodySize") << "\t" << getTraitMean(Pop, "beqProb") << "\t" << getTraitVar(Pop, "beqProb") << "\t" << getTotalFitness(Pop, target_lb, selection_strength, fitnessArr) / popSize << "\t" << count << endl;
 
         // Generation files closing
         genFile.close();
@@ -441,7 +445,7 @@ bool checkBaby(Individual baby, double lowerLim, double upperLim) {
 
 // Step the population forward by 1 generation
 
-void evolvePop(vector<Individual> &population, double target, double lowerLim, double upperLim, int popSize, const std::vector<std::vector<double> > mutList, int numShelters, double calamFreq, double calamStrength, bool showShelterStats) {
+void evolvePop(vector<Individual> &population, double target, double selStrength, double lowerLim, double upperLim, int popSize, const std::vector<std::vector<double> > mutList, int numShelters, double calamFreq, double calamStrength, bool showShelterStats) {
 
     std::vector<Individual> reproductivePop;
     
@@ -487,7 +491,7 @@ void evolvePop(vector<Individual> &population, double target, double lowerLim, d
     
     // Get total fitness
     std::vector<double> fitnessArr(reproductivePop.size(), 0.0);
-    double totalFitness = getTotalFitness(reproductivePop, target, fitnessArr);
+    double totalFitness = getTotalFitness(reproductivePop, target, selStrength, fitnessArr);
     
     // Loop for length of population, make babies
     int counter = 0;
@@ -546,10 +550,10 @@ void evolvePop(vector<Individual> &population, double target, double lowerLim, d
 
 // Get the fitness of an entire population
 
-double getTotalFitness(std::vector<Individual> &population, double target, std::vector<double> &fitnessArr) {
+double getTotalFitness(std::vector<Individual> &population, double target, double selStrength, std::vector<double> &fitnessArr) {
     double totalFitness = 0;
     for(int i = 0; i < population.size(); i++) {
-        double currentFitness = population[i].getFitness(target);
+        double currentFitness = population[i].getFitness(target, selStrength);
         fitnessArr[i] = currentFitness;
         totalFitness += currentFitness;
     }
@@ -606,7 +610,7 @@ double getTraitVar(std::vector<Individual> &population, string trait) {
 
 // Get the population means and variances of individual traits
 
-string getData(std::vector<Individual> &population, double target) {
+string getData(std::vector<Individual> &population, double target, double selStrength) {
 
     std::stringstream s;
     int popSize = population.size();
@@ -626,7 +630,7 @@ string getData(std::vector<Individual> &population, double target) {
     
     // getting average fitness
     std::vector<double> fitnessArr(popSize, 0.0);
-    double avgFitness = getTotalFitness(population, target, fitnessArr) / popSize;
+    double avgFitness = getTotalFitness(population, target, selStrength, fitnessArr) / popSize;
     
     s << lbMean << "\t" << lbVar << "\t" << bpMean << "\t" << bpVar << "\t" << avgFitness << "\n";
     string data = s.str();
