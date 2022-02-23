@@ -47,14 +47,14 @@ int main(int argc, char** argv)
     // Standard deviation of bequeathal probability
     const double beqProbStDev = 0.025;
     
-    po::options_description desc("simulate jaw evolution");
+    po::options_description desc("Simulate trait evolution under wealth inheritance");
     desc.add_options()
         ("help", "Show help message")
         ("mutCount", po::value<int>()->default_value(1000), "Number of mutations we will have")
-        ("popSize", po::value<int>()->default_value(100), "Size of the populations")
-        ("endpointsensitivity", po::value<double>()->default_value(0.01), "How close average fitness gets to 1")
+        ("popSize", po::value<int>()->default_value(100), "Number of individuals in the population")
+        ("endpointsensitivity", po::value<double>()->default_value(0.01), "How close body size has to get to target value")
         ("reps", po::value<int>()->default_value(1), "Number of simulation repetitions")
-        ("gen_limit", po::value<int>()->default_value(30000), "Maximum number of generations before cutting short simulation run")
+        ("gen_limit", po::value<int>()->default_value(30000), "Maximum number of generations before cutting the simulation short")
         ("burnin", po::value<bool>()->default_value(true), "Should the simulation generate some initial variation first?")
         ("min_lb", po::value<double>()->default_value(1.0), "Log of minimum body size")        // log_10(10)
         ("max_lb", po::value<double>()->default_value(3.0), "Log of maximum body size")        // log_10(1000)
@@ -119,14 +119,14 @@ int main(int argc, char** argv)
         std::vector<std::vector<double> > mutList;
         mutList = getMutList(mutCount, bodySizeStDev, beqProbStDev);
 
-        /* Get phenotypes for starting populations. If a nonzero burnin period is specified, we
-         * will start with a population of individuals sharing the same randomly generated values,
-         * and let it evolve (using the same evolvePop() function used for the simulation proper)
-         * toward a specified starting body size. The idea is to generate a population where all
-         * individuals are phenotypically identical and equally distant from the fitness optimum,
-         * but which already contains some genotypic variation for selection to act upon. If burnin
-         * is skipped, the simulation starts with a bunch of individuals that are identical both
-         * phenotypically and genotypically.
+        /* Get phenotypes for starting populations. If burnin == true, we will start with a
+         * population of individuals sharing the same randomly generated values, and let it evolve
+         * (using the same evolvePop() function used for the simulation proper) toward a specified
+         * starting body size. The idea is to generate a population where all individuals are
+         * phenotypically identical and equally distant from the fitness optimum, but which already
+         * contains some genotypic variation for selection to act upon. If burnin == false, the
+         * simulation starts with a bunch of individuals that are identical both  phenotypically
+         * and genotypically.
          */
          
         double startingPhenotype [2];
@@ -149,8 +149,8 @@ int main(int argc, char** argv)
         // Get the absolute number of shelters available to the population
         int nShelters = ceil(shelterFraction * popSize);
 
-        /* Burn in the populations. The burnin phase will end when the average log body size gets
-         * gets acceptably close to the specified starting value.
+        /* Burn in the populations (optional). The burnin phase will end when the average log body
+         * size gets acceptably close to the specified starting value.
          */
 
         if (burnin) {
