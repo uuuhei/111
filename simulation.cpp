@@ -23,19 +23,19 @@ namespace po = boost::program_options;
 
 // Convenience functions
 double randomdouble(double a, double b);
+int randominteger(int a, int b);
 
 // Evolving a population and the traits of its constituent individuals
-std::vector<double> getMutList(int mutCount, double traitStDev); //记得修改trait standard deviation
-void pickParents(vector<Individual> &population, double totalFitness, vector<Individual> &parents, double target, vector<double> &fitnessArr);
-Individual mateParents(vector<Individual> parents, std::vector<double> mutList);
+std::vector<double> getMutList(int mutCount, double traitStDev); // trait standard deviation
+Individual pickAndMateParents(std::vector<Individual> &population, double totalFitness, double target, std::vector<double> &fitnessArr, std::vector<double> mutList);
 bool checkBaby(Individual baby, double lowerLim, double upperLim);
-void evolvePop(vector<Individual> &population, double target, double lowerLim, double upperLim, int popSize, const std::vector<double> mutList);
+void evolvePop(vector<Individual> &population, double target, double lowerLim, double upperLim, int popSize, const std::vector<double> mutList, int numShelters, double calamFreq, double calamStrength, bool showShelterStats);
 
 // Extracting data
 double getTotalFitness(vector<Individual> &population, double target, vector<double> &fitnessArr);
 double getAverageLB(vector<Individual> &population);
 double getVmor(vector<Individual> &population);
-string getData(vector<Individual> &population);
+string getData(vector<Individual> &population, double target);
 
 
 int main(int argc, char** argv)
@@ -52,9 +52,12 @@ int main(int argc, char** argv)
         ("endpointsensitivity", po::value<double>()->default_value(0.01), "How close average fitness gets to 1")
         ("reps", po::value<int>()->default_value(1), "Number of simulation repetitions")
         ("gen_limit", po::value<int>()->default_value(30000), "Maximum number of generations before cutting short simulation run")
-        ("min_lb", po::value<double>()->default_value(1), "log of minimum body size")    // log_10(10)
-        ("max_lb", po::value<double>()->default_value(3), "log of maximum body size")    // log_10(1000)
-        ("start_lb", po::value<double>()->default_value(2), "log of starting body size") // log_10(100)
+        ("min_lb", po::value<double>()->default_value(1), "Log of minimum body size")    // log_10(10)
+        ("max_lb", po::value<double>()->default_value(3), "Log of maximum body size")    // log_10(1000)
+        ("start_lb", po::value<double>()->default_value(2), "Log of starting body size") // log_10(100)
+        ("nShelters", po::value<int>()->default_value(10), "Number of shelters available to each generation") // Set to 10% of popSize by default
+        ("calamityFrequency", po::value<double>()->default_value(0.1), "Frequency of calamities affecting unsheltered individuals")
+        ("calamityStrength", po::value<double>()->default_value(0.1), "Fraction of the population eliminated by a calamity")
         ("burnLength", po::value<double>()->default_value(0), "Length of burnin and burnout")
 	 // ("output_prefix", po::value<int>()->default_value(""), "Prefix for output files")
         ("output_suffix", po::value<string>()->default_value(""), "Prefix for output files");
@@ -72,6 +75,10 @@ int main(int argc, char** argv)
     const double min_lb = vm["min_lb"].as<double>();
     const double max_lb = vm["max_lb"].as<double>();
     const double start_lb = vm["start_lb"].as<double>();
+    // After burnin, give shelter to 10% of individuals in the population
+    const int nShelters = vm["nShelters"].as<int>();
+    const double calamityFrequency = vm["calamityFrequency"].as<double>();
+    const double calamityStrength = vm["calamityStrength"].as<double>();
     const double burnLength = vm["burnLength"].as<double>(); // this is just the *minimum* burnin length
     // const string output_prefix = vm["output_prefix"].as<string>();
     const string output_suffix = vm["output_suffix"].as<string>();
@@ -103,7 +110,7 @@ int main(int argc, char** argv)
         params << "params_" << output_suffix << ".txt";
         string pName = params.str();
         ofstream genFile(pName.c_str());
-        genFile << "gen\tavg_bd\tvar_bd\n";
+        genFile << "gen\tavg_bd\tvar_bd\tavg_fit\n";
 
         // generation files closing
 
@@ -129,7 +136,7 @@ int main(int argc, char** argv)
             init = start_lb;
         }
         
-        // create population of specified size
+        // Create a population of specified size, with all individuals initialized as shelter-less
         Individual squirrel(init);
         std::vector<Individual> Pop(popSize, squirrel);
         
@@ -144,7 +151,7 @@ int main(int argc, char** argv)
             int burnCount = 0;
             while(fabs(pow(10, getAverageLB(Pop)) - pow(10, start_lb)) > endpointsensitivity || burnCount < burnLength) {
                 
-                evolvePop(Pop, start_lb, min_lb, max_lb, popSize, mutList);
+                evolvePop(Pop, start_lb, min_lb, max_lb, popSize, mutList, 0, 0, 0, false);
             
                 if(burnCount % outputFrequency == 0) {
                     cout << "burnin generation: " << burnCount << endl;
@@ -157,36 +164,54 @@ int main(int argc, char** argv)
                 burnCount++;
             }
         }
+        
+        // Randomly select individuals to receive shelter
+        std::vector<int> shelterIdx;
+        for(int i = 0; i < nShelters; i++) {
+            int idx = randominteger(0, popSize - 1);
+            shelterIdx.push_back(idx);
+        }
+        
+        // Give shelter to the individuals selected
+        for(int j = 0; j < popSize; j++) {
+            if (std::find(shelterIdx.begin(), shelterIdx.end(), j) != shelterIdx.end()) {
+                Pop[j].setShelter(true);
+            }
+        }
 
-        // evolve the populations
+        // Evolve the population
         int count = 0;
         bool finished = false;
         time_t start = time(0);
         
-        // while the average body size is not at the target
+        // While the average body size is not at the target
         while(!finished && count < gen_limit) {
             
-            // outputing all the generation level data:
+            // Outputing all the generation level data:
             if(!finished && count % outputFrequency == 0) {
-                string data = getData(Pop);
+                string data = getData(Pop, targetLbs);
                 genFile << count << "\t" << data;
             }
 
-            // checking if the population has finished evolving
+            // Checking if the population has finished evolving
             if(fabs(pow(10, getAverageLB(Pop)) - pow(10, targetLbs)) > endpointsensitivity) {
-                evolvePop(Pop, targetLbs, min_lb, max_lb, popSize, mutList);
-                if(count % outputFrequency == 0) {
+                
+                if (count % outputFrequency == 0) {
+                    evolvePop(Pop, targetLbs, min_lb, max_lb, popSize, mutList, nShelters, calamityFrequency, calamityStrength, true);
                     cout << "generation: " << count;
                     cout << "   Avg body size: " << pow(10, (getAverageLB(Pop))); //编一个新的function，得到正常bodysize的数据 - 搞定
                     std::vector<double> fitnessArr(popSize, 0.0);
                     cout << "   Avg fitness: " << getTotalFitness(Pop, targetLbs, fitnessArr) / popSize << endl;
                     
-                    // warnings
+                    // Warnings
                     if(pow(10, (getAverageLB(Pop))) < 11.0) {
                         cout << "   Approaching lower bound on body size   ";
                     } else if(pow(10, (getAverageLB(Pop))) > 990.0) {
                         cout << "   Approaching upper bound on body size   ";
                     }
+                } else {
+                    // Evolve quietly
+                    evolvePop(Pop, targetLbs, min_lb, max_lb, popSize, mutList, nShelters, calamityFrequency, calamityStrength, false);
                 }
             } else {
                 finished = true;
@@ -219,12 +244,27 @@ int main(int argc, char** argv)
 
 // Get a random number uniformly distributed between a, b
 
-double randomdouble(double a, double b) 
-{
+double randomdouble(double a, double b) {
     double random = ((double) rand()) / (double) RAND_MAX;
     double diff = b - a;
     double r = random * diff;
     return a + r;
+}
+
+
+// Get a random integer uniformly distributed between a, b
+
+int randominteger(int a, int b) {
+    // source of randomness for initializing random seed (http://stackoverflow.com/a/38245134)
+    std::random_device rd;
+    // define uniform distribution
+    std::uniform_int_distribution<int> unifInt(a, b);
+    // Mersenne twister pseudorandom number generator, initialized with a seed generated above
+    std::mt19937 prng(rd());
+    // Make a random draw from the distribution defined above
+    int randInt = unifInt(prng);
+    
+    return(randInt);
 }
 
 
@@ -236,33 +276,26 @@ double randomdouble(double a, double b)
 
 std::vector<double> getMutList(int mutCount, const double traitStDev) {
     
-    // source of randomness for initializing random seed (http://stackoverflow.com/a/38245134)
     std::random_device randomnessSource;
     // define univariate normal distributions
     std::normal_distribution<double> lbMutMaker(0.0, traitStDev);
     // store draws from the normal distributions specified above using a for loop
     std::vector<double> mutList(mutCount, 0.0);
     for (int i = 0; i < mutCount; ++i) {
-        // Seed obtained using the Mersenne twister pseudorandom number generator above
         std::mt19937 gen(randomnessSource());
         mutList[i] = lbMutMaker(gen);
     }
     
     return mutList;
 }
-    
-
-/* Overloaded version of the previous function, which takes a variance-covariance matrix as
- * its second argument, meaning that mutations are drawn from a multivariate normal.
- */
-
-//直接把多元正态分布删除了 因为只有一个变量
 
 
-// Randomly pick two parents from the current generation
+// Randomly pick two parents from the current generation and make a baby from them
 
-void pickParents(vector<Individual> &population, double totalFitness, vector<Individual> &parents, double target, vector<double> &fitnessArr) {
+Individual pickAndMateParents(std::vector<Individual> &population, double totalFitness, double target, std::vector<double> &fitnessArr, std::vector<double> mutList) {
+    // Pick parents
     int parentsPicked = 0;
+    std::vector<int> parentIdx;
 
     while(parentsPicked < 2) {
         double tempFitness = 0;
@@ -270,30 +303,53 @@ void pickParents(vector<Individual> &population, double totalFitness, vector<Ind
         for(int i = 0; i < population.size(); i++) {
             tempFitness = tempFitness + fitnessArr[i];
             // cout << tempFitness << " " << rand << endl;
-            if(tempFitness > rand) {
-                parents[parentsPicked] = population[i];
+            if (tempFitness > rand) {
+                parentIdx.push_back(i);
                 parentsPicked++;
                 break;
             }
         }
     }
-}
-
-
-// Make a baby from two parents
-
-Individual mateParents(vector<Individual> parents, std::vector<double> mutList) {
-    Individual baby(parents[0].phenotypeVal);
+    
+    int parentAidx = parentIdx[0];
+    int parentBidx = parentIdx[1];
+    
+    // The baby is initialized with no shelter
+    Individual baby(population[parentAidx].phenotypeVal);
     int mutRate = 20000;
     int val;
+    
+    // Genotype inheritance
     for(int i = 0; i < baby.lbMutations.size(); i++) {
         val = rand();
         if(val % mutRate == 0) {
             baby.lbMutations[i] = mutList[i];
         } else if(val %2 == 0){
-            baby.lbMutations[i] = parents[0].lbMutations[i];
+            baby.lbMutations[i] = population[parentAidx].lbMutations[i];
         } else{
-            baby.lbMutations[i] = parents[1].lbMutations[i];
+            baby.lbMutations[i] = population[parentBidx].lbMutations[i];
+        }
+    }
+    
+    /* Shelter inheritance: if one of the two parents has a shelter, it will pass it on
+     * to its offspring (and cease to have it, meaning that only the first offspring
+     * the parent produces gets to inherit that parent's shelter). If both parents
+     * have it, the one that will pass it on to the offspring is selected at random.
+     */
+    
+    if (population[parentAidx].hasShelter() == true && population[parentBidx].hasShelter() == false) {
+        baby.setShelter(true);
+        population[parentAidx].setShelter(false);
+    } else if (population[parentAidx].hasShelter() == false && population[parentBidx].hasShelter() == true) {
+        baby.setShelter(true);
+        population[parentBidx].setShelter(false);
+    } else if (population[parentAidx].hasShelter() == true && population[parentBidx].hasShelter() == true) {
+        baby.setShelter(true);
+        double coinToss = randomdouble(0, 1);
+        if (coinToss <= 0.5) {
+            population[parentAidx].setShelter(false);
+        } else {
+            population[parentBidx].setShelter(false);
         }
     }
 
@@ -307,7 +363,7 @@ bool checkBaby(Individual baby, double lowerLim, double upperLim) {
 
     double lb = baby.getLB();
 
-    if ((lb < lowerLim || lb > upperLim)) {
+    if (lb < lowerLim || lb > upperLim) {
         int stopper = 0;
         return false;
     }
@@ -317,23 +373,62 @@ bool checkBaby(Individual baby, double lowerLim, double upperLim) {
 
 // Step the population forward by 1 generation
 
-void evolvePop(vector<Individual> &population, double target, double lowerLim, double upperLim, int popSize, const std::vector<double> mutList) {
+void evolvePop(vector<Individual> &population, double target, double lowerLim, double upperLim, int popSize, const std::vector<double> mutList, int numShelters, double calamFreq, double calamStrength, bool showShelterStats) {
 
-    std::vector<double> fitnessArr(popSize, 0.0);
-    // get total fitness
-    double totalFitness = getTotalFitness(population, target, fitnessArr);
+    std::vector<Individual> reproductivePop;
     
-    // loop for length of population, make babies
+    // Calamity check
+    double randomDraw = randomdouble(0, 1);
+    if (randomDraw < calamFreq) {
+        std::vector<Individual> shelteredAndSurvivors;
+        std::vector<Individual> unshelteredPop;
+        int deathToll = ceil(calamStrength * population.size());
+        
+        // Divide the population into sheltered and unsheltered individuals
+        for(int i = 0; i < population.size(); i++) {
+            if (population[i].hasShelter() == true) {
+                shelteredAndSurvivors.push_back(population[i]);
+            } else {
+                unshelteredPop.push_back(population[i]);
+            }
+        }
+        
+        // Get the indices of n = deathToll individuals to be eliminated from unshelteredPop
+        std::vector<int> toEliminate;
+        for(int j = 0; j < deathToll; j++) {
+            int killed = randominteger(0, (int) (unshelteredPop.size() - 1));
+            toEliminate.push_back(killed);
+        }
+        
+        // Uncomment the line below for more verbose output:
+        // cout << "   A calamity eliminated " << toEliminate.size() << " unsheltered individuals." << endl;
+        
+        // Add the survivors (= unshelteredPop members not in toEliminate) to the sheltered individuals
+        for(int k = 0; k < unshelteredPop.size(); k++) {
+            if (std::find(toEliminate.begin(), toEliminate.end(), k) == toEliminate.end()) {
+                shelteredAndSurvivors.push_back(unshelteredPop[k]);
+            }
+        }
+        
+        // Reproductive population set to the union of sheltered individuals and unsheltered survivors
+        reproductivePop = shelteredAndSurvivors;
+    } else {
+        // If no calamity has occurred, reproductive population = total population
+        reproductivePop = population;
+    }
+    
+    // Get total fitness
+    std::vector<double> fitnessArr(reproductivePop.size(), 0.0);
+    double totalFitness = getTotalFitness(reproductivePop, target, fitnessArr);
+    
+    // Loop for length of population, make babies
     int counter = 0;
     int stallCount = 0;
-    Individual ind = population[0];
-    std::vector<Individual> parents(2, ind);
+    Individual ind = reproductivePop[0];
     std::vector<Individual> newPop(popSize, ind);
     while(counter < popSize) {
-        // pick parents
-        pickParents(population, totalFitness, parents, target, fitnessArr);
-        // make a baby
-        Individual baby = mateParents(parents, mutList);
+        // Pick parents and make a baby
+        Individual baby = pickAndMateParents(reproductivePop, totalFitness, target, fitnessArr, mutList);
 
         if (!checkBaby(baby, lowerLim, upperLim)) {
             stallCount++;
@@ -343,12 +438,40 @@ void evolvePop(vector<Individual> &population, double target, double lowerLim, d
             }
         } else {
             newPop[counter] = baby;
-            // add baby to newPop
+            // Add baby to newPop
             counter++;
+        }
+    }
+    
+    // Check for unassigned shelters
+    std::vector<int> shelteredIndividuals;
+    for(int l = 0; l < popSize; l++) {
+        if (newPop[l].hasShelter() == true) {
+            shelteredIndividuals.push_back(l);
+        }
+    }
+    int availableShelters = (int) (numShelters - shelteredIndividuals.size());
+    
+    // Print out the number of assigned and unassigned shelters
+    if (showShelterStats) {
+        cout << "   Assigned shelters: " << shelteredIndividuals.size() << endl;
+        cout << "   Unassigned shelters: " << availableShelters << endl;
+    }
+    
+    // Assign remaining shelters at random
+    while(availableShelters > 0) {
+        // Select an individual at random
+        int ind = randominteger(0, popSize - 1);
+        // Only assign a shelter to this individual if it does not have one already
+        if (std::find(shelteredIndividuals.begin(), shelteredIndividuals.end(), ind) == shelteredIndividuals.end()) {
+            newPop[ind].setShelter(true);
+            // Decrement the number of available shelters
+            availableShelters--;
         }
     }
 
     population = newPop;
+    reproductivePop.clear();
     newPop.clear();
 }
 
@@ -407,7 +530,7 @@ double getVmor(vector<Individual> &population) {
 
 // Get the population means and variances of individual traits - 需要修改，已经不再是individual traits了
 
-string getData(vector<Individual> &population) {
+string getData(vector<Individual> &population, double target) {
 
     std::stringstream s;
     int popSize = population.size();
@@ -430,7 +553,13 @@ string getData(vector<Individual> &population) {
         lbVar += ((popVects[j] - lbMean) * (popVects[j] - lbMean)) / popSize;
     }
 
-    s << lbVar << "\n";
+    s << lbVar << "\t";
+    
+    // getting average fitness
+    std::vector<double> fitnessArr(popSize, 0.0);
+    double avgFitness = getTotalFitness(population, target, fitnessArr) / popSize;
+    
+    s << avgFitness << "\n";
 
     string data = s.str();
     return data;
