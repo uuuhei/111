@@ -45,7 +45,7 @@ int main(int argc, char** argv)
     // Standard deviation of log body size
     const double bodySizeStDev = 0.01;
     // Standard deviation of bequeathal probability
-    const double beqProbStDev = 0.025;
+    const double beqProbStDev = 0.005;
     
     po::options_description desc("Simulate trait evolution under wealth inheritance");
     desc.add_options()
@@ -226,7 +226,7 @@ int main(int argc, char** argv)
                 if (count % outputFrequency == 0) {
 		   
                     evolvePop(Pop, target_lb, selection_strength, min_lb, max_lb, popSize, mutList, nShelters, calamityFrequency, calamityStrength, true, &uniqueParents);
-		    genFile << uniqueParents << "\n";
+                    genFile << uniqueParents << endl;
                     cout << "generation: " << count;
                     cout << "   Avg body size: " << pow(10, (getTraitMean(Pop, "bodySize")));
                     cout << "   Avg bequeathal prob: " << getTraitMean(Pop, "beqProb");
@@ -427,8 +427,8 @@ Individual pickAndMateParents(std::vector<Individual> &population, double totalF
             }
         }
     }
-*parentA = parentAidx;
-*parentB = parentBidx;
+    *parentA = parentAidx;
+    *parentB = parentBidx;
     return baby;
 }
 
@@ -505,7 +505,7 @@ void evolvePop(vector<Individual> &population, double target, double selStrength
     Individual ind = reproductivePop[0];
     std::vector<Individual> newPop(popSize, ind);
     while(counter < popSize) {
-	int parentA, parentB;
+        int parentA, parentB;
         // Pick parents and make a baby
         Individual baby = pickAndMateParents(reproductivePop, totalFitness, target, fitnessArr, mutList, &parentA, &parentB);
 
@@ -517,7 +517,7 @@ void evolvePop(vector<Individual> &population, double target, double selStrength
             }
         } else {
             newPop[counter] = baby;
-		parentIndices.push_back(parentA);
+            parentIndices.push_back(parentA);
      		parentIndices.push_back(parentB);
             // Add baby to newPop
             counter++;
@@ -537,7 +537,7 @@ void evolvePop(vector<Individual> &population, double target, double selStrength
     if (showShelterStats) {
         cout << "   Assigned shelters: " << shelteredIndividuals.size() << endl;
         cout << "   Unassigned shelters: " << availableShelters << endl;
-	cout << "   Unique parents: " << std::set<double>( parentIndices.begin(), parentIndices.end() ).size() << endl;
+        cout << "   Unique parents: " << std::set<double>( parentIndices.begin(), parentIndices.end() ).size() << endl;
     }
     
     // Assign remaining shelters at random
