@@ -152,9 +152,7 @@ int main(int argc, char** argv)
         /* Burn in the populations (optional). The burnin phase will end when the average log body
          * size gets acceptably close to the specified starting value.
          */
-         int uniqueParents;
-         int parentA;
-         int parentB;
+        int uniqueParents;
 
         if (burnin) {
             int burnCount = 0;
@@ -323,7 +321,8 @@ double variance(std::vector<double> vals, double mean) {
 
 std::vector<std::vector<double> > getMutList(int mutCount, const double lbStDev, const double bpStDev) {
     
-    std::random_device randomnessSource;
+    std::random_device lbRandomnessSource;
+    std::random_device bpRandomnessSource;
     // Define univariate normal distributions
     std::normal_distribution<double> lbMutMaker(0.0, lbStDev);
     std::normal_distribution<double> bpMutMaker(0.0, bpStDev);
@@ -332,9 +331,10 @@ std::vector<std::vector<double> > getMutList(int mutCount, const double lbStDev,
     // Store draws from the normal distributions specified above using a for loop
     std::vector<std::vector<double> > mutList(mutCount, zeros);
     for (int i = 0; i < mutCount; ++i) {
-        std::mt19937 gen(randomnessSource());
-        mutList[i][0] = lbMutMaker(gen);
-        mutList[i][1] = bpMutMaker(gen);
+        std::mt19937 lbGen(lbRandomnessSource());
+        mutList[i][0] = lbMutMaker(lbGen);
+        std::mt19937 bpGen(bpRandomnessSource());
+        mutList[i][1] = bpMutMaker(bpGen);
     }
     
     return mutList;
@@ -374,13 +374,16 @@ Individual pickAndMateParents(std::vector<Individual> &population, double totalF
     // Genotype inheritance
     for(int i = 0; i < baby.lbMutations.size(); i++) {
         val = rand(); // using val = randominteger(0, RAND_MAX) causes a huge performance hit
-        if(val % mutRate == 0) {
+        // double val = randomdouble(0, 1);
+        // if (val < 1 / (double) mutRate) {
+        if (val % mutRate == 0) {
             baby.lbMutations[i] = mutList[i][0];
             baby.bpMutations[i] = mutList[i][1];
-        } else if(val %2 == 0){
+        // } else if (val < 0.5) {
+        } else if (val %2 == 0) {
             baby.lbMutations[i] = population[parentAidx].lbMutations[i];
             baby.bpMutations[i] = population[parentAidx].bpMutations[i];
-        } else{
+        } else {
             baby.lbMutations[i] = population[parentBidx].lbMutations[i];
             baby.bpMutations[i] = population[parentBidx].bpMutations[i];
         }
@@ -523,7 +526,7 @@ void evolvePop(vector<Individual> &population, double target, double selStrength
             counter++;
         }
     }
-    *uniqueParents = std::set<double>( parentIndices.begin(), parentIndices.end() ).size();
+    *uniqueParents = std::set<int>( parentIndices.begin(), parentIndices.end() ).size();
     // Check for unassigned shelters
     std::vector<int> shelteredIndividuals;
     for(int l = 0; l < popSize; l++) {
@@ -537,7 +540,7 @@ void evolvePop(vector<Individual> &population, double target, double selStrength
     if (showShelterStats) {
         cout << "   Assigned shelters: " << shelteredIndividuals.size() << endl;
         cout << "   Unassigned shelters: " << availableShelters << endl;
-        cout << "   Unique parents: " << std::set<double>( parentIndices.begin(), parentIndices.end() ).size() << endl;
+        cout << "   Unique parents: " << std::set<int>( parentIndices.begin(), parentIndices.end() ).size() << endl;
     }
     
     // Assign remaining shelters at random
