@@ -28,9 +28,9 @@ double variance(std::vector<double> vals, double mean);
 
 // Evolving a population and the traits of its constituent individuals
 std::vector<std::vector<double> > getMutList(int mutCount, const double lbStDev, const double bpStDev);
-Individual pickAndMateParents(std::vector<Individual> &population, double totalFitness, double target, std::vector<double> &fitnessArr, std::vector<std::vector<double> > mutList, int *parentA, int *parentB);
+Individual pickAndMateParents(std::vector<Individual> &population, double totalFitness, double target, std::vector<double> &fitnessArr, std::vector<std::vector<double> > mutList, bool evolveLB, bool evolveBP, int *parentA, int *parentB);
 bool checkBaby(Individual baby, double lowerLim, double upperLim);
-void evolvePop(vector<Individual> &population, double target, double selStrength, double lowerLim, double upperLim, int popSize, const std::vector<std::vector<double> > mutList, int numShelters, double calamFreq, double calamStrength, bool showShelterStats, int *uniqueParents);
+void evolvePop(vector<Individual> &population, double target, double selStrength, double lowerLim, double upperLim, int popSize, const std::vector<std::vector<double> > mutList, int numShelters, double calamFreq, double calamStrength, bool evolveLB, bool evolveBP, bool showShelterStats, int *uniqueParents);
 
 // Extracting data
 double getTotalFitness(std::vector<Individual> &population, double target, double selStrength, std::vector<double> &fitnessArr);
@@ -43,7 +43,7 @@ int main(int argc, char** argv)
 {
     
     // Standard deviation of log body size
-    const double bodySizeStDev = 0.01;
+    const double bodySizeStDev = 0.001;
     // Standard deviation of bequeathal probability
     const double beqProbStDev = 0.005;
     
@@ -52,15 +52,20 @@ int main(int argc, char** argv)
         ("help", "Show help message")
         ("mutCount", po::value<int>()->default_value(1000), "Number of mutations we will have")
         ("popSize", po::value<int>()->default_value(100), "Number of individuals in the population")
-        ("endpointsensitivity", po::value<double>()->default_value(0.01), "How close body size has to get to target value")
+        ("endpointsensitivity", po::value<double>()->default_value(0.02), "How close body size has to get to target value")
         ("reps", po::value<int>()->default_value(1), "Number of simulation repetitions")
         ("gen_limit", po::value<int>()->default_value(30000), "Maximum number of generations before cutting the simulation short")
         ("burnin", po::value<bool>()->default_value(true), "Should the simulation generate some initial variation first?")
-        ("min_lb", po::value<double>()->default_value(1.0), "Log of minimum body size")        // log_10(10)
-        ("max_lb", po::value<double>()->default_value(3.0), "Log of maximum body size")        // log_10(1000)
-        ("start_lb", po::value<double>()->default_value(2.0), "Log of starting body size")     // log_10(100)
-        ("target_lb", po::value<double>()->default_value(2.176091), "Log of target body size") // log_10(150)
-        ("selection_strength", po::value<double>()->default_value(0.5), "Penalty incurred by increasing distance from target body size")
+        ("min_lb", po::value<double>()->default_value(2.302585), "Log of minimum body size")    // ln(10)
+        ("max_lb", po::value<double>()->default_value(6.907755), "Log of maximum body size")    // ln(1000)
+        ("start_lb", po::value<double>()->default_value(4.605171), "Log of starting body size") // ln(100)
+        ("target_lb", po::value<double>()->default_value(5.010635), "Log of target body size")  // ln(150)
+        ("selection_strength", po::value<double>()->default_value(65), "Penalty incurred by increasing distance from target body size")
+        /* Default selection strength value: derived here by plugging an empirical value reported in a meta-analysis by Hoekstra et al.
+         * (2001; doi:10.1073/pnas.161281098) -- 0.088, median standardized linear selection gradient for viability selection -- into
+         * Eq. 1 of Alfaro et al. (2004; doi:10.1111/j.0014-3820.2004.tb01673.x). (1/2)*1/(0.088^2) = 64.566, which is rounded here to
+         * the value above.
+         */
         ("start_bp", po::value<double>()->default_value(0.05), "Starting bequeathal probability")
         ("shelterFraction", po::value<double>()->default_value(0.1), "Fraction of the population possessing shelter") // Set to 10% by default
         ("calamityFrequency", po::value<double>()->default_value(0.1), "Frequency of calamities affecting unsheltered individuals")
@@ -94,7 +99,7 @@ int main(int argc, char** argv)
     // Output user-specified parameter values
     ofstream pFile("simulation_settings_" + output_suffix + ".txt");
     pFile << "popSize\tbodySizeTarget\tmutCount\tendpointSensitivity" << endl; //
-    pFile << popSize << "\t" << pow(10, target_lb) << "\t" << mutCount << "\t" << endpointsensitivity << endl;
+    pFile << popSize << "\t" << exp(target_lb) << "\t" << mutCount << "\t" << endpointsensitivity << endl;
     pFile.close();
 
     // Output stream
@@ -112,7 +117,7 @@ int main(int argc, char** argv)
         std::ostringstream params;
         params << "parameters_" << output_suffix << ".txt";
         string pName = params.str();
-        ofstream genFile(pName.c_str());
+        ofstream genFile( pName.c_str() );
         genFile << "generation\taverageBodySize\tbodySizeVariance\taverageBequeathalProb\tbequeathalProbVariance\taverageFitness\tuniqueParents\n";
 
         // Get a mutation list
@@ -155,14 +160,22 @@ int main(int argc, char** argv)
         int uniqueParents;
 
         if (burnin) {
+            std::ostringstream tmp;
+            tmp << "tmp_" << output_suffix << ".txt"; // generate names for temporary files to store burnin data in
+            string tmpName = tmp.str();
+            ofstream tmpFile( tmpName.c_str() );      // open the temporary files
+
             int burnCount = 0;
-            while(fabs(pow(10, getTraitMean(Pop, "bodySize")) - pow(10, start_lb)) > endpointsensitivity) {
+            while( fabs( exp(getTraitMean(Pop, "bodySize")) - exp(start_lb) ) > endpointsensitivity ) {
                 
-                evolvePop(Pop, start_lb, selection_strength, min_lb, max_lb, popSize, mutList, 0, 0, 0, false, &uniqueParents);
+                string data = getData(Pop, target_lb, selection_strength);
+                tmpFile << burnCount << "\t" << data; // the temporary files are structured the same way as the generation files
+                evolvePop(Pop, start_lb, selection_strength, min_lb, max_lb, popSize, mutList, 0, 0, 0, true, false, false, &uniqueParents);
+                tmpFile << uniqueParents << endl;
             
                 if(burnCount % outputFrequency == 0) {
                     cout << "burnin generation: " << burnCount << endl;
-                    cout << "Avg body size: " << pow(10, (getTraitMean(Pop, "bodySize")));
+                    cout << "Avg body size: " << exp(getTraitMean(Pop, "bodySize"));
                     cout << "   Avg bequeathal prob: " << getTraitMean(Pop, "beqProb");
                     std::vector<double> fitnessArr(popSize, 0.0);
                     cout << "   Avg fitness: " << getTotalFitness(Pop, start_lb, selection_strength, fitnessArr) / popSize << endl;
@@ -172,22 +185,32 @@ int main(int argc, char** argv)
                 burnCount++;
             }
             
-            /* The process of generating genotypic variation during the burnin period caused the
-             * bequeathal probability to diverge from the user-specified value. Here, we keep the
-             * body size values generated during burnin, but set bequeathal probability back to
-             * the starting value by creating a temporary copy of the population.
-             */
+            tmpFile.close();                        // close the temporary files for writing
             
-            std::vector<Individual> tempPop;
-            for (int i = 0; i < popSize; i++) {
-                double replacementPhenotype [2] = {Pop[i].logBodySize, start_bp};
-                Individual newOne(replacementPhenotype);
-                tempPop.push_back(newOne);
+            // Credit: Joost Huizinga, https://stackoverflow.com/a/26372759
+            
+            std::string lastline = "";              // declare a string variable to store the last line of the temporary file in
+            std::ifstream tmpf( tmpName.c_str() );  // open the temporary file for reading
+            tmpf.seekg(0, std::ios_base::end);      // go to the last character of the temporary file
+            char ch = ' ';                          // initial character not equal to newline
+            while(ch != '\n') {
+                tmpf.seekg(-2, std::ios_base::cur); // go two characters back
+                if( (int)tmpf.tellg() <= 0 ) {
+                    tmpf.seekg(0);                  // start of the last line
+                    break;
+                }
+                tmpf.get(ch);                       // check the next character
             }
             
-            // Reassign and delete
-            Pop = tempPop;
-            tempPop.clear();
+            std::getline(tmpf, lastline);           // store the result in the previously declared variable
+            tmpf.close();                           // close the temporary file for reading
+            remove( tmpName.c_str() );              // delete the temporary file
+            
+            /* We want to send the last line of the temporary file to the first post-header file of the generation file,
+             * but before doing so, we will replace the generation number by 0.
+             */
+            std::string lastlineParsed = lastline.erase(0, lastline.find("\t") );
+            genFile << "0\t" << lastlineParsed << endl;
         }
         
         // Randomly select individuals to receive shelter
@@ -212,34 +235,39 @@ int main(int argc, char** argv)
         // While the average body size is not at the target
         while(!finished && count < gen_limit) {
             
-            // Outputing all the generation level data:
-            if(!finished && count % outputFrequency == 0) {
+            /* Outputing all the generation level data. If we ran burnin, we already got our generation 0
+             * in the generation file, so we reset the counter here and start at 1. If not, we start at 0
+             * and will include it in the file.
+             */
+            int printcount = (burnin ? count + 1 : count);
+            
+            if(!finished && printcount % outputFrequency == 0) {
                 string data = getData(Pop, target_lb, selection_strength);
-                genFile << count << "\t" << data;
+                genFile << printcount << "\t" << data;
             }
 
             // Checking if the population has finished evolving
-            if(fabs(pow(10, getTraitMean(Pop, "bodySize")) - pow(10, target_lb)) > endpointsensitivity) {
+            if( fabs( exp(getTraitMean(Pop, "bodySize")) - exp(target_lb) ) > endpointsensitivity ) {
                 
-                if (count % outputFrequency == 0) {
+                if (printcount % outputFrequency == 0) {
 		   
-                    evolvePop(Pop, target_lb, selection_strength, min_lb, max_lb, popSize, mutList, nShelters, calamityFrequency, calamityStrength, true, &uniqueParents);
+                    evolvePop(Pop, target_lb, selection_strength, min_lb, max_lb, popSize, mutList, nShelters, calamityFrequency, calamityStrength, true, true, true, &uniqueParents);
                     genFile << uniqueParents << endl;
-                    cout << "generation: " << count;
-                    cout << "   Avg body size: " << pow(10, (getTraitMean(Pop, "bodySize")));
+                    cout << "generation: " << printcount;
+                    cout << "   Avg body size: " << exp(getTraitMean(Pop, "bodySize"));
                     cout << "   Avg bequeathal prob: " << getTraitMean(Pop, "beqProb");
                     std::vector<double> fitnessArr(popSize, 0.0);
                     cout << "   Avg fitness: " << getTotalFitness(Pop, target_lb, selection_strength, fitnessArr) / popSize << endl;
                     
                     // Warnings
-                    if(pow(10, (getTraitMean(Pop, "bodySize"))) < 11.0) {
+                    if (exp(getTraitMean(Pop, "bodySize")) < 11.0) {
                         cout << "   Approaching lower bound on body size   ";
-                    } else if(pow(10, (getTraitMean(Pop, "bodySize"))) > 990.0) {
+                    } else if (exp(getTraitMean(Pop, "bodySize")) > 990.0) {
                         cout << "   Approaching upper bound on body size   ";
                     }
                 } else {
                     // Evolve quietly
-                    evolvePop(Pop, target_lb, selection_strength, min_lb, max_lb, popSize, mutList, nShelters, calamityFrequency, calamityStrength, false, &uniqueParents);
+                    evolvePop(Pop, target_lb, selection_strength, min_lb, max_lb, popSize, mutList, nShelters, calamityFrequency, calamityStrength, true, true, false, &uniqueParents);
                 }
             } else {
                 finished = true;
@@ -252,7 +280,7 @@ int main(int argc, char** argv)
         cout << "ending simulation" << endl;
         cout << " " << endl;
         cout << "final stats: " << endl;
-        cout << "avg body size: " << pow(10, (getTraitMean(Pop, "bodySize"))) << "   avg bequeathal prob: " << getTraitMean(Pop, "beqProb") << "   generations: " << count << endl;
+        cout << "avg body size: " << exp(getTraitMean(Pop, "bodySize")) << "   avg bequeathal prob: " << getTraitMean(Pop, "beqProb") << "   generations: " << count << endl;
         
         // Print total time
         double diff = difftime(time(0), start);
@@ -260,7 +288,7 @@ int main(int argc, char** argv)
 
         // Print endpoint data
         std::vector<double> fitnessArr(popSize, 0.0);
-        outputFile << pow(10, (getTraitMean(Pop, "bodySize"))) << "\t" << getTraitVar(Pop, "bodySize") << "\t" << getTraitMean(Pop, "beqProb") << "\t" << getTraitVar(Pop, "beqProb") << "\t" << getTotalFitness(Pop, target_lb, selection_strength, fitnessArr) / popSize << "\t" << count << endl;
+        outputFile << exp(getTraitMean(Pop, "bodySize")) << "\t" << getTraitVar(Pop, "bodySize") << "\t" << getTraitMean(Pop, "beqProb") << "\t" << getTraitVar(Pop, "beqProb") << "\t" << getTotalFitness(Pop, target_lb, selection_strength, fitnessArr) / popSize << "\t" << count << endl;
 
         // Generation files closing
         genFile.close();
@@ -343,7 +371,7 @@ std::vector<std::vector<double> > getMutList(int mutCount, const double lbStDev,
 
 // Randomly pick two parents from the current generation and make a baby from them
 
-Individual pickAndMateParents(std::vector<Individual> &population, double totalFitness, double target, std::vector<double> &fitnessArr, std::vector<std::vector<double> > mutList, int *parentA, int *parentB) {
+Individual pickAndMateParents(std::vector<Individual> &population, double totalFitness, double target, std::vector<double> &fitnessArr, std::vector<std::vector<double> > mutList, bool evolveLB, bool evolveBP, int *parentA, int *parentB) {
     // Pick parents
     int parentsPicked = 0;
     std::vector<int> parentIdx;
@@ -377,8 +405,12 @@ Individual pickAndMateParents(std::vector<Individual> &population, double totalF
         // double val = randomdouble(0, 1);
         // if (val < 1 / (double) mutRate) {
         if (val % mutRate == 0) {
-            baby.lbMutations[i] = mutList[i][0];
-            baby.bpMutations[i] = mutList[i][1];
+            if (evolveLB) {
+                baby.lbMutations[i] = mutList[i][0];
+            }
+            if (evolveBP) {
+                baby.bpMutations[i] = mutList[i][1];
+            }
         // } else if (val < 0.5) {
         } else if (val %2 == 0) {
             baby.lbMutations[i] = population[parentAidx].lbMutations[i];
@@ -454,7 +486,7 @@ bool checkBaby(Individual baby, double lowerLim, double upperLim) {
 
 // Step the population forward by 1 generation
 
-void evolvePop(vector<Individual> &population, double target, double selStrength, double lowerLim, double upperLim, int popSize, const std::vector<std::vector<double> > mutList, int numShelters, double calamFreq, double calamStrength, bool showShelterStats, int *uniqueParents) {
+void evolvePop(vector<Individual> &population, double target, double selStrength, double lowerLim, double upperLim, int popSize, const std::vector<std::vector<double> > mutList, int numShelters, double calamFreq, double calamStrength, bool evolveLB, bool evolveBP, bool showShelterStats, int *uniqueParents) {
     std::vector<int> parentIndices;
     std::vector<Individual> reproductivePop;
     
@@ -510,7 +542,7 @@ void evolvePop(vector<Individual> &population, double target, double selStrength
     while(counter < popSize) {
         int parentA, parentB;
         // Pick parents and make a baby
-        Individual baby = pickAndMateParents(reproductivePop, totalFitness, target, fitnessArr, mutList, &parentA, &parentB);
+        Individual baby = pickAndMateParents(reproductivePop, totalFitness, target, fitnessArr, mutList, evolveLB, evolveBP, &parentA, &parentB);
 
         if (!checkBaby(baby, lowerLim, upperLim)) {
             stallCount++;
