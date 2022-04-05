@@ -42,15 +42,12 @@ string getData(std::vector<Individual> &population, double target, double selStr
 int main(int argc, char** argv)
 {
     
-    // Standard deviation of log body size
-    const double bodySizeStDev = 0.001;
-    // Standard deviation of bequeathal probability
-    const double beqProbStDev = 0.005;
-    
     po::options_description desc("Simulate trait evolution under wealth inheritance");
     desc.add_options()
         ("help", "Show help message")
         ("mutCount", po::value<int>()->default_value(1000), "Number of mutations we will have")
+        ("lbMutStrength", po::value<double>()->default_value(0.0005), "Standard deviation of the mutation model for log body size")
+        ("bpMutStrength", po::value<double>()->default_value(0.005), "Standard deviation of the mutation model for bequeathal probability")
         ("popSize", po::value<int>()->default_value(100), "Number of individuals in the population")
         ("endpointsensitivity", po::value<double>()->default_value(0.02), "How close body size has to get to target value")
         ("reps", po::value<int>()->default_value(1), "Number of simulation repetitions")
@@ -79,6 +76,8 @@ int main(int argc, char** argv)
     po::store(po::command_line_parser(argc, argv).options(desc).run(), vm);
     po::notify(vm);
     const int mutCount = vm["mutCount"].as<int>();
+    const double bodySizeStDev = vm["lbMutStrength"].as<double>();
+    const double beqProbStDev = vm["bpMutStrength"].as<double>();
     const int popSize = vm["popSize"].as<int>();
     const double endpointsensitivity = vm["endpointsensitivity"].as<double>();
     const int reps = vm["reps"].as<int>();
