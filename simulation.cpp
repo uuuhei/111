@@ -50,6 +50,7 @@ int main(int argc, char** argv)
         ("bpMutStrength", po::value<double>()->default_value(0.005), "Standard deviation of the mutation model for bequeathal probability")
         ("popSize", po::value<int>()->default_value(100), "Number of individuals in the population")
         ("endpointsensitivity", po::value<double>()->default_value(0.02), "How close body size has to get to target value")
+        ("outputfrequency", po::value<int>()->default_value(50), "How often (in terms of generations) to print out data")
         ("reps", po::value<int>()->default_value(1), "Number of simulation repetitions")
         ("gen_limit", po::value<int>()->default_value(30000), "Maximum number of generations before cutting the simulation short")
         ("burnin", po::value<bool>()->default_value(true), "Should the simulation generate some initial variation first?")
@@ -80,6 +81,7 @@ int main(int argc, char** argv)
     const double beqProbStDev = vm["bpMutStrength"].as<double>();
     const int popSize = vm["popSize"].as<int>();
     const double endpointsensitivity = vm["endpointsensitivity"].as<double>();
+    const int outputFrequency = vm["outputfrequency"].as<int>();
     const int reps = vm["reps"].as<int>();
     const int gen_limit = vm["gen_limit"].as<int>();
     const bool burnin = vm["burnin"].as<bool>();
@@ -146,9 +148,6 @@ int main(int argc, char** argv)
         // Create a population of specified size, with all individuals initialized as shelter-less
         Individual squirrel(startingPhenotype);
         std::vector<Individual> Pop(popSize, squirrel);
-        
-        // How often (in terms of generations) to print out data
-        int outputFrequency = 50;
         
         // Get the absolute number of shelters available to the population
         int nShelters = ceil(shelterFraction * popSize);
