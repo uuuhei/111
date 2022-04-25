@@ -238,17 +238,14 @@ int main(int argc, char** argv)
              * and will include it in the file.
              */
             int printcount = (burnin ? count + 1 : count);
-            
-            if(!finished && printcount % outputFrequency == 0) {
-                string data = getData(Pop, target_lb, selection_strength);
-                genFile << printcount << "\t" << data;
-            }
 
             // Checking if the population has finished evolving
             if( fabs( exp(getTraitMean(Pop, "bodySize")) - exp(target_lb) ) > endpointsensitivity ) {
                 
                 if (printcount % outputFrequency == 0) {
 		   
+                    string data = getData(Pop, target_lb, selection_strength);
+                    genFile << printcount << "\t" << data;
                     evolvePop(Pop, target_lb, selection_strength, min_lb, max_lb, popSize, mutList, nShelters, calamityFrequency, calamityStrength, true, true, true, &uniqueParents);
                     genFile << uniqueParents << endl;
                     cout << "generation: " << printcount;
