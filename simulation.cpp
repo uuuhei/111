@@ -128,11 +128,11 @@ int main(int argc, char** argv)
         /* Get phenotypes for starting populations. If burnin == true, we will start with a
          * population of individuals sharing the same randomly generated values, and let it evolve
          * (using the same evolvePop() function used for the simulation proper) toward a specified
-         * starting body size. The idea is to generate a population where all individuals are
-         * phenotypically identical and equally distant from the fitness optimum, but which already
-         * contains some genotypic variation for selection to act upon. If burnin == false, the
-         * simulation starts with a bunch of individuals that are identical both  phenotypically
-         * and genotypically.
+         * starting body size. The idea is to generate a population whose mean body size corresponds
+         * to a specified starting value but whose members are already different from one another
+         * phenotypically and genotypically, so that there is some initial variation for selection
+         * to act upon. If burnin == false, the simulation starts with a bunch of genotypically
+         * identical individuals that all share exactly the same starting body size value.
          */
          
         double startingPhenotype [2];
@@ -204,7 +204,7 @@ int main(int argc, char** argv)
             tmpf.close();                           // close the temporary file for reading
             remove( tmpName.c_str() );              // delete the temporary file
             
-            /* We want to send the last line of the temporary file to the first post-header file of the generation file,
+            /* We want to send the last line of the temporary file to the first post-header line of the generation file,
              * but before doing so, we will replace the generation number by 0.
              */
             std::string lastlineParsed = lastline.erase(0, lastline.find("\t") );
@@ -285,7 +285,7 @@ int main(int argc, char** argv)
         std::vector<double> fitnessArr(popSize, 0.0);
         outputFile << exp(getTraitMean(Pop, "bodySize")) << "\t" << getTraitVar(Pop, "bodySize") << "\t" << getTraitMean(Pop, "beqProb") << "\t" << getTraitVar(Pop, "beqProb") << "\t" << getTotalFitness(Pop, target_lb, selection_strength, fitnessArr) / popSize << "\t" << count << endl;
         
-        // Print a waring if the simulation has timed out without reaching the target
+        // Print a warning if the simulation has timed out without reaching the target
         if (!finished && count == gen_limit) {
             cout << " " << endl;
             cout << "Warning: the simulation did not reach the stopping criterion!" << endl;
