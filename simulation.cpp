@@ -284,9 +284,19 @@ int main(int argc, char** argv)
         // Print endpoint data
         std::vector<double> fitnessArr(popSize, 0.0);
         outputFile << exp(getTraitMean(Pop, "bodySize")) << "\t" << getTraitVar(Pop, "bodySize") << "\t" << getTraitMean(Pop, "beqProb") << "\t" << getTraitVar(Pop, "beqProb") << "\t" << getTotalFitness(Pop, target_lb, selection_strength, fitnessArr) / popSize << "\t" << count << endl;
+        
+        // Print a waring if the simulation has timed out without reaching the target
+        if (!finished && count == gen_limit) {
+            cout << " " << endl;
+            cout << "Warning: the simulation did not reach the stopping criterion!" << endl;
+            cout << "Try increasing the number of generations by setting the 'gen_limit' flag to a value > " << gen_limit << "." << endl;
+            cout << " " << endl;
+            outputFile << "Warning: the simulation did not reach the stopping criterion!" << endl;
+        }
 
-        // Generation files closing
+        // Generation and endpoint files closing
         genFile.close();
+        outputFile.close();
         
     }
     return 0;
