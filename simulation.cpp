@@ -54,6 +54,7 @@ int main(int argc, char** argv)
         ("reps", po::value<int>()->default_value(1), "Number of simulation repetitions")
         ("gen_limit", po::value<int>()->default_value(30000), "Maximum number of generations before cutting the simulation short")
         ("burnin", po::value<bool>()->default_value(true), "Should the simulation generate some initial variation first?")
+        ("burnout", po::value<int>()->default_value(0), "How long to keep the simulation running after the target has been reached")
         ("min_lb", po::value<double>()->default_value(2.302585), "Log of minimum body size")    // ln(10)
         ("max_lb", po::value<double>()->default_value(6.907755), "Log of maximum body size")    // ln(1000)
         ("start_lb", po::value<double>()->default_value(4.605171), "Log of starting body size") // ln(100)
@@ -83,8 +84,9 @@ int main(int argc, char** argv)
     const double endpointsensitivity = vm["endpointsensitivity"].as<double>();
     const int outputFrequency = vm["outputfrequency"].as<int>();
     const int reps = vm["reps"].as<int>();
-    const int gen_limit = vm["gen_limit"].as<int>();
+    int gen_limit = vm["gen_limit"].as<int>();
     const bool burnin = vm["burnin"].as<bool>();
+    const int burnout = vm["burnout"].as<int>();
     const double min_lb = vm["min_lb"].as<double>();
     const double max_lb = vm["max_lb"].as<double>();
     const double start_lb = vm["start_lb"].as<double>();
@@ -255,9 +257,9 @@ int main(int argc, char** argv)
                     cout << "   Avg fitness: " << getTotalFitness(Pop, target_lb, selection_strength, fitnessArr) / popSize << endl;
                     
                     // Warnings
-                    if (exp(getTraitMean(Pop, "bodySize")) < 11.0) {
+                    if (exp(getTraitMean(Pop, "bodySize")) < min_lb + 0.01 * min_lb) {
                         cout << "   Approaching lower bound on body size   ";
-                    } else if (exp(getTraitMean(Pop, "bodySize")) > 990.0) {
+                    } else if (exp(getTraitMean(Pop, "bodySize")) > max_lb - 0.01 * max_lb) {
                         cout << "   Approaching upper bound on body size   ";
                     }
                 } else {
@@ -269,6 +271,45 @@ int main(int argc, char** argv)
             }
             
             count++;
+        }
+        
+        // If a non-zero burnout has been specified, record the fact that the target has been reached and keep evolving:
+        if (burnout != 0) {
+            cout << "Target body size reached after " << count << " generations; continuting to run burn-out." << endl;
+            genFile << "Target body size reached after " << count << " generations; continuting to run burn-out." << endl;
+            
+            /* If the number of generations we already ran plus the number of generations we are still about to run as
+             * burnout exceeds gen_limit, reset gen_limit to allow the full length of the burnout to be run.
+             */
+            
+            if (count + burnout > gen_limit) {
+                gen_limit = count + burnout;
+            }
+            
+            for (int i = 0; i < burnout; i++) {
+                
+                int printcount = (burnin ? count + 1 : count);
+                
+                if (printcount % outputFrequency == 0) {
+                    string data = getData(Pop, target_lb, selection_strength);
+                    genFile << printcount << "\t" << data;
+                    evolvePop(Pop, target_lb, selection_strength, min_lb, max_lb, popSize, mutList, nShelters, calamityFrequency, calamityStrength, true, true, true, &uniqueParents);
+                    genFile << uniqueParents << endl;
+                } else {
+                    // Evolve quietly
+                    evolvePop(Pop, target_lb, selection_strength, min_lb, max_lb, popSize, mutList, nShelters, calamityFrequency, calamityStrength, true, true, false, &uniqueParents);
+                }
+                
+                if (i % outputFrequency == 0) {
+                    cout << "burnout generation: " << i;
+                    cout << "   Avg body size: " << exp(getTraitMean(Pop, "bodySize"));
+                    cout << "   Avg bequeathal prob: " << getTraitMean(Pop, "beqProb");
+                    std::vector<double> fitnessArr(popSize, 0.0);
+                    cout << "   Avg fitness: " << getTotalFitness(Pop, target_lb, selection_strength, fitnessArr) / popSize << endl;
+                }
+                
+                count++;
+            }
         }
 
         // Print final stats
