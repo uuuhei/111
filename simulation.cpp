@@ -275,8 +275,8 @@ int main(int argc, char** argv)
         
         // If a non-zero burnout has been specified, record the fact that the target has been reached and keep evolving:
         if (burnout != 0) {
-            cout << "Target body size reached after " << count << " generations; continuting to run burn-out." << endl;
-            genFile << "Target body size reached after " << count << " generations; continuting to run burn-out." << endl;
+            cout << "Target body size reached after " << count << " generations; continuing to run burn-out." << endl;
+            genFile << "Target body size reached after " << count << " generations; continuing to run burn-out." << endl;
             
             /* If the number of generations we already ran plus the number of generations we are still about to run as
              * burnout exceeds gen_limit, reset gen_limit to allow the full length of the burnout to be run.
